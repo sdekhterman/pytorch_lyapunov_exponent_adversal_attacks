@@ -1,13 +1,33 @@
+---------------------------------------------------------------------------------
+                                    Overall Goal
+---------------------------------------------------------------------------------
 Reimplement a method to compute the finite-time Lyapunov exponents for a standard
 image classifier (Storm 2024).
+---------------------------------------------------------------------------------
+                                    Current Tasks
+---------------------------------------------------------------------------------
+1. Critical Paper Reread
+    Read Paper
+        How are finite-time Lyapunov exponents computed in Storm 2024?
 
+        What standard image classifier is used in Storm 2024?
 
-How are finite-time Lyapunov exponents computed in Storm 2024?
+        What images are classified in Storm 2024?
+            MNIST
 
-What images are classified in Storm 2024?
+    On paper
+        Note what each variable means.
+        Break down what are the different experiments.
+        Take notes on technical implementation of each experiments
 
-What standard image classifier is used in Storm 2024?
-
-Where am I saving my project files and code?
-GitHub (Code), Google Drive (Papers), and Overleaf (Write Up) with a 
-
+2. Simple Code Demos
+---------------------------------------------------------------------------------
+                                    Past Tasks
+---------------------------------------------------------------------------------
+1. Setup Repos (Github and Overleaf)
+2. Email Authors
+3. Read Paper Blind
+4. 1 On 1 Meeting with Prof
+5. Project Survey
+6. Read Project List
+---------------------------------------------------------------------------------
