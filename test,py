@@ -1,0 +1,75 @@
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Define the deep tanh neural network
+class DeepTanhNet(nn.Module):
+    def __init__(self, input_size=2, hidden_size=12, hidden_layers=10):
+        super(DeepTanhNet, self).__init__()
+        layers = [nn.Linear(input_size, hidden_size), nn.Tanh()]
+        for _ in range(hidden_layers - 1):
+            layers += [nn.Linear(hidden_size, hidden_size), nn.Tanh()]
+        layers += [nn.Linear(hidden_size, 1), nn.Sigmoid()]
+        self.model = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.model(x)
+
+# Generate synthetic data
+def generate_data(n_samples=10000):
+    x = np.random.uniform(-1.5, 1.5, (n_samples, 2))
+    y = ((x[:, 0] > 0) & (x[:, 1] > 0)).astype(np.float32)  # Top-right quadrant
+    return torch.tensor(x, dtype=torch.float32), torch.tensor(y, dtype=torch.float32).unsqueeze(1)
+
+# Instantiate model, loss, optimizer
+model = DeepTanhNet()
+criterion = nn.BCELoss()
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+# Training data
+x_train, y_train = generate_data()
+
+# Training loop
+for epoch in range(1000):
+    model.train()
+    optimizer.zero_grad()
+    outputs = model(x_train)
+    loss = criterion(outputs, y_train)
+    loss.backward()
+    optimizer.step()
+
+    if (epoch + 1) % 100 == 0:
+        with torch.no_grad():
+            preds = (outputs > 0.5).float()
+            acc = (preds == y_train).float().mean()
+        print(f"Epoch {epoch+1}, Loss: {loss.item():.4f}, Accuracy: {acc.item()*100:.2f}%")
+
+# ---- Visualization ----
+def plot_decision_boundary(model, resolution=100):
+    model.eval()
+    x_min, x_max = -1.5, 1.5
+    y_min, y_max = -1.5, 1.5
+    xx, yy = np.meshgrid(np.linspace(x_min, x_max, resolution),
+                         np.linspace(y_min, y_max, resolution))
+    grid = np.c_[xx.ravel(), yy.ravel()]
+    with torch.no_grad():
+        preds = model(torch.tensor(grid, dtype=torch.float32)).numpy().reshape(xx.shape)
+
+    plt.figure(figsize=(8, 6))
+    plt.contourf(xx, yy, preds, levels=[0, 0.5, 1], alpha=0.6, cmap='coolwarm')
+    plt.colorbar(label='Predicted Probability')
+
+    # Overlay some actual points
+    x_vis, y_vis = generate_data(3000)
+    y_vis_np = y_vis.numpy().ravel()
+    plt.scatter(x_vis[:, 0], x_vis[:, 1], c=y_vis_np, cmap='bwr', edgecolors='k', s=20, alpha=0.6)
+
+    plt.title("Decision Boundary of Deep Tanh Network")
+    plt.xlabel("x")
+    plt.ylabel("y")
+    plt.grid(True)
+    plt.show()
+
+plot_decision_boundary(model)
