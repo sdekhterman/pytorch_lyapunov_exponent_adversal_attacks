@@ -6,8 +6,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 
-
-
 # Define the deep tanh neural network
 class DeepTanhNet(nn.Module):
     def __init__(self, input_size=2, hidden_size=12, hidden_layers=10):
@@ -70,6 +68,23 @@ for epoch in range(10000):
             test_preds = torch.sign(test_outputs)
             test_acc = (test_preds == t_test).float().mean()
         print(f"Epoch {epoch+1}, Loss: {loss.item():.4f}, Test Accuracy: {test_acc.item()*100:.2f}%")
+
+for i, layer in enumerate(model.model):
+    if isinstance(layer, nn.Linear):
+        weight_matrix = layer.weight.data.cpu().numpy()
+        bias_vector   = layer.bias.data.cpu().numpy()
+        
+        print(f"Layer {i} — weight shape: {weight_matrix.shape}")
+        print(weight_matrix)
+        print(f"Layer {i} — bias shape: {bias_vector.shape}")
+        print(bias_vector)
+        print("-" * 40)
+
+weights = []
+for layer in model.model:
+    if isinstance(layer, nn.Linear):
+        weights.append(layer.weight.data.cpu().numpy())
+
 
 # ---- Visualization ----
 def plot_decision_boundary():
