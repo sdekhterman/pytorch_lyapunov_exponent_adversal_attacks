@@ -20,7 +20,7 @@ class DeepTanhNet(nn.Module):
 
 # Generate 40,000 points in [-1, 1] x [-1, 1] and classify by unit circle
 def generate_circle_data(n_samples=40000):
-    x = np.random.uniform(-1, 1, (n_samples, 2))
+    x = np.random.uniform(-1.5, 1.5, (n_samples, 2))
     y = ((x[:, 0]**2 + x[:, 1]**2) <= 1.0).astype(np.float32)  # inside unit circle
     return x, y
 
@@ -59,8 +59,8 @@ for epoch in range(1000):
 # ---- Visualization ----
 def plot_decision_boundary(model, resolution=200):
     model.eval()
-    x_min, x_max = -1, 1
-    y_min, y_max = -1, 1
+    x_min, x_max = -1.5, 1.5
+    y_min, y_max = -1.5, 1.5
     xx, yy = np.meshgrid(np.linspace(x_min, x_max, resolution),
                          np.linspace(y_min, y_max, resolution))
     grid = np.c_[xx.ravel(), yy.ravel()]
