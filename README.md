@@ -18,7 +18,9 @@ image classifier (Storm 2024).
 
     D. Compute the first/largest posative eigen value (Finite Time Lyapunov Exponent [FTLE]) [X]
 
-    E. Plot FTLE color gradient over the points []
+    E. Plot FTLE color gradient over the points [X]
+
+    F. Fix FTLE computation since I did  NOT sort the singular value decomp and for fraction this messes with the lower range of the log ouput. 
 
 2. MNIST Demo
 

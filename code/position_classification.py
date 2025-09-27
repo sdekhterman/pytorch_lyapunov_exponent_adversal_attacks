@@ -29,7 +29,7 @@ class DeepTanhNet(nn.Module):
     def forward(self, x):
         return self.model(x)
     
-    def max_lyapunov_exponents(self, x: torch.Tensor) -> list[torch.Tensor]:
+    def max_finite_time_lyapunov_exponents(self, x: torch.Tensor) -> list[torch.Tensor]:
         # Ensure input is a 2D tensor for batch processing
         if x.dim() == 1:
             x = x.unsqueeze(0)
@@ -70,15 +70,18 @@ class DeepTanhNet(nn.Module):
             jacobian = temp if jacobian is None else temp @ jacobian
         
         cauchy_green_tensor = torch.transpose(jacobian, 1, 2) @ jacobian
-        L = torch.linalg.eigvals(cauchy_green_tensor)
+        eigen_values = torch.linalg.eigvals(cauchy_green_tensor)
 
-        # 1. Get the real part of the complex tensor L.
-        L_real_parts = torch.real(L)
+        # 1. Get the real part of the complex tensor eigen values.
+        eigen_values_real_parts = torch.real(eigen_values)
         
         # 2. Sort the real parts to get the sorting values.
-        sorted_L, _ = torch.sort(L_real_parts, dim=-1, descending=True)
+        sorted_eigen_values, _ = torch.sort(eigen_values_real_parts, dim=-1, descending=True)
+        max_eigen_values       = sorted_eigen_values[:,0]
+        max_singular_values    = torch.sqrt(max_eigen_values)
+        max_lyapunov_exponents = torch.log(max_singular_values)
 
-        return sorted_L[:,0]
+        return max_lyapunov_exponents
     
 
 
@@ -106,7 +109,7 @@ criterion = nn.MSELoss()
 optimizer = optim.SGD(model.parameters(), lr=0.05)
 
 # Training loop
-for epoch in range(10000):
+for epoch in range(12000):
     model.train()
     optimizer.zero_grad()
     outputs = model(x_train)
@@ -121,7 +124,6 @@ for epoch in range(10000):
             test_preds = torch.sign(test_outputs)
             test_acc = (test_preds == t_test).float().mean()
         print(f"Epoch {epoch+1}, Loss: {loss.item():.4f}, Test Accuracy: {test_acc.item()*100:.2f}%")
-
 
 
 
@@ -220,7 +222,7 @@ def plot_finite_time_lyapunov_exponents(resolution = 200):
     grid = np.c_[x0.ravel(), x1.ravel()]
     torch_grid = torch.tensor(grid, dtype=torch.float32).to(device)
 
-    torch_exp = model.max_lyapunov_exponents(torch_grid)
+    torch_exp = model.max_finite_time_lyapunov_exponents(torch_grid)
     
     exp = torch_exp.detach().cpu().numpy().reshape(x1.shape)
 
