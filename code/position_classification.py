@@ -216,25 +216,35 @@ def plot_classification():
     plt.tight_layout()
     plt.show()
 
-# def plot_finite_time_lyapunov_exponents():
-#     Ls_gpu = model.max_lyapunov_exponents(x_test)
-#     Ls = Ls_gpu.detach().cpu().numpy()
-#     x0 = x_test[:, 0].detach().cpu().numpy()
-#     x1 = x_test[:, 1].detach().cpu().numpy()
+def plot_finite_time_lyapunov_exponents():
+    Ls_gpu = model.max_lyapunov_exponents(x_test)
+    Ls = Ls_gpu.detach().cpu().numpy()
+    x0 = x_test[:, 0].detach().cpu().numpy()
+    x1 = x_test[:, 1].detach().cpu().numpy()
+
+    # Reshape Ls to match the meshgrid
+    Z = Ls.reshape(len(np.unique(x1)), len(np.unique(x0)))
     
-#     # background heatmap
-#     pcm = plt.pcolormesh(x0, x1, Ls, cmap='RdBu_r', shading='auto')
+    # background heatmap
+    pcm = plt.pcolormesh(x0, x1, Z, cmap='RdBu_r', shading='auto')
 
-#     plt.axis('equal')
+    plt.axis('equal')
 
-#     # colorbar
-#     plt.colorbar(pcm, label="Ls")
+    # colorbar
+    plt.colorbar(pcm, label="Ls")
 
-#     plt.show()
+    plt.show()
 
 
 
 
 # plot_classification()
 
-# plot_finite_time_lyapunov_exponents()
+plot_finite_time_lyapunov_exponents()
+
+
+
+
+# plot_classification()
+
+plot_finite_time_lyapunov_exponents()
