@@ -75,12 +75,8 @@ class DeepTanhNet(nn.Module):
         # 1. Get the real part of the complex tensor L.
         L_real_parts = torch.real(L)
         
-        # 2. Sort the real parts to get the sorting indices.
-        # We only need the indices, so we use '_' for the sorted values.
-        _, sorted_indices = torch.sort(L_real_parts, dim=-1, descending=True)
-
-        # 3. Use torch.gather() to sort the original complex tensor L using these indices.
-        sorted_L = torch.gather(L, dim=-1, index=sorted_indices)
+        # 2. Sort the real parts to get the sorting values.
+        sorted_L, _ = torch.sort(L_real_parts, dim=-1, descending=True)
 
         return sorted_L[:,0]
     
@@ -110,7 +106,7 @@ criterion = nn.MSELoss()
 optimizer = optim.SGD(model.parameters(), lr=0.05)
 
 # Training loop
-for epoch in range(1000):
+for epoch in range(10000):
     model.train()
     optimizer.zero_grad()
     outputs = model(x_train)
@@ -216,17 +212,20 @@ def plot_classification():
     plt.tight_layout()
     plt.show()
 
-def plot_finite_time_lyapunov_exponents():
-    Ls_gpu = model.max_lyapunov_exponents(x_test)
-    Ls = Ls_gpu.detach().cpu().numpy()
-    x0 = x_test[:, 0].detach().cpu().numpy()
-    x1 = x_test[:, 1].detach().cpu().numpy()
+def plot_finite_time_lyapunov_exponents(resolution = 200):
+    x0_min, x0_max = -1.25, 1.25
+    x1_min, x1_max = -1.25, 1.25
+    x0, x1 = np.meshgrid(np.linspace(x0_min, x0_max, resolution),
+                         np.linspace(x1_min,x1_max, resolution))
+    grid = np.c_[x0.ravel(), x1.ravel()]
+    torch_grid = torch.tensor(grid, dtype=torch.float32).to(device)
 
-    # Reshape Ls to match the meshgrid
-    Z = Ls.reshape(len(np.unique(x1)), len(np.unique(x0)))
+    torch_exp = model.max_lyapunov_exponents(torch_grid)
     
+    exp = torch_exp.detach().cpu().numpy().reshape(x1.shape)
+
     # background heatmap
-    pcm = plt.pcolormesh(x0, x1, Z, cmap='RdBu_r', shading='auto')
+    pcm = plt.pcolormesh(x0, x1, exp, cmap='RdBu_r', shading='auto')
 
     plt.axis('equal')
 
@@ -234,15 +233,6 @@ def plot_finite_time_lyapunov_exponents():
     plt.colorbar(pcm, label="Ls")
 
     plt.show()
-
-
-
-
-# plot_classification()
-
-plot_finite_time_lyapunov_exponents()
-
-
 
 
 # plot_classification()
