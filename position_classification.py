@@ -28,6 +28,63 @@ class DeepTanhNet(nn.Module):
 
     def forward(self, x):
         return self.model(x)
+    
+    def max_lyapunov_exponents(self, x: torch.Tensor) -> list[torch.Tensor]:
+        # Ensure input is a 2D tensor for batch processing
+        if x.dim() == 1:
+            x = x.unsqueeze(0)
+
+        # D_matrices    = []
+        current_input = x
+        jacobian = None
+
+        # A "layer" in the formula corresponds to a (Linear, Tanh) pair.
+        # We iterate through the model's layers two at a time.
+        for i in range(0, len(self.model), 2):
+            linear_layer     = self.model[i]
+            activation_layer = self.model[i+1]
+
+            # Weight matrix from last layer to current layer
+            W_l = linear_layer.state_dict()['weight']
+
+            # 1. Get the pre-activation value b^(l)
+            # This is the output of the linear layer BEFORE the activation.
+            b = linear_layer(current_input)
+
+            # 2. Compute the derivative g'(b^(l))
+            # For g(b) = tanh(b), the derivative g'(b) = 1 - tanh^2(b).
+            # We can get tanh(b) by applying the activation layer.
+            tanh_of_b = activation_layer(b)
+            g_prime = 1 - tanh_of_b.pow(2)
+
+            # 3. Construct the diagonal matrix D^(l)
+            # torch.diag_embed creates a batch of diagonal matrices from a batch of vectors.
+            D_l = torch.diag_embed(g_prime)
+            # D_matrices.append(D_l)
+
+            # The output of this layer's activation is the input for the next linear layer
+            current_input = tanh_of_b
+
+            # Compute the Jacobian (change in the network matrix) starting at the network input to layer l of the network
+            temp = D_l @ W_l
+            jacobian = temp if jacobian is None else temp @ jacobian
+        
+        cauchy_green_tensor = torch.transpose(jacobian, 1, 2) @ jacobian
+        L = torch.linalg.eigvals(cauchy_green_tensor)
+
+        # 1. Get the real part of the complex tensor L.
+        L_real_parts = torch.real(L)
+        
+        # 2. Sort the real parts to get the sorting indices.
+        # We only need the indices, so we use '_' for the sorted values.
+        _, sorted_indices = torch.sort(L_real_parts, dim=-1, descending=True)
+
+        # 3. Use torch.gather() to sort the original complex tensor L using these indices.
+        sorted_L = torch.gather(L, dim=-1, index=sorted_indices)
+
+        return sorted_L[:,0]
+    
+
 
 # Generate 40,000 points in [-1.25, 1.25] x [-1.25, 1.25] and classify by unit circle
 def generate_circle_data(n_samples=40000):
@@ -53,7 +110,7 @@ criterion = nn.MSELoss()
 optimizer = optim.SGD(model.parameters(), lr=0.05)
 
 # Training loop
-for epoch in range(10000):
+for epoch in range(1000):
     model.train()
     optimizer.zero_grad()
     outputs = model(x_train)
@@ -69,25 +126,11 @@ for epoch in range(10000):
             test_acc = (test_preds == t_test).float().mean()
         print(f"Epoch {epoch+1}, Loss: {loss.item():.4f}, Test Accuracy: {test_acc.item()*100:.2f}%")
 
-for i, layer in enumerate(model.model):
-    if isinstance(layer, nn.Linear):
-        weight_matrix = layer.weight.data.cpu().numpy()
-        bias_vector   = layer.bias.data.cpu().numpy()
-        
-        print(f"Layer {i} — weight shape: {weight_matrix.shape}")
-        print(weight_matrix)
-        print(f"Layer {i} — bias shape: {bias_vector.shape}")
-        print(bias_vector)
-        print("-" * 40)
 
-weights = []
-for layer in model.model:
-    if isinstance(layer, nn.Linear):
-        weights.append(layer.weight.data.cpu().numpy())
 
 
 # ---- Visualization ----
-def plot_decision_boundary():
+def plot_classification():
     # Choose number of test points to plot
     n_plot = 250
 
@@ -173,18 +216,25 @@ def plot_decision_boundary():
     plt.tight_layout()
     plt.show()
 
-plot_decision_boundary()
+# def plot_finite_time_lyapunov_exponents():
+#     Ls_gpu = model.max_lyapunov_exponents(x_test)
+#     Ls = Ls_gpu.detach().cpu().numpy()
+#     x0 = x_test[:, 0].detach().cpu().numpy()
+#     x1 = x_test[:, 1].detach().cpu().numpy()
+    
+#     # background heatmap
+#     pcm = plt.pcolormesh(x0, x1, Ls, cmap='RdBu_r', shading='auto')
 
-# use later for eigens
+#     plt.axis('equal')
 
-# model.eval()
-# x0_min, x0_max = -1.25, 1.25
-# x1_min, x1_max = -1.25, 1.25
-# x0, x1 = np.meshgrid(np.linspace(x0_min, x0_max, resolution),
-#                      np.linspace(x1_min,x1_max, resolution))
-# grid = np.c_[x0.ravel(), x1.ravel()]
-# with torch.no_grad():
-#     preds = model(torch.tensor(grid, dtype=torch.float32)).numpy().reshape(x1.shape)
+#     # colorbar
+#     plt.colorbar(pcm, label="Ls")
 
-# plt.contourf(x0, x1, preds, levels=[0, 0.5, 1], alpha=0.6, cmap='coolwarm')
-# plt.colorbar(label='Predicted Probability')
+#     plt.show()
+
+
+
+
+# plot_classification()
+
+# plot_finite_time_lyapunov_exponents()
