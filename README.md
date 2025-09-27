@@ -25,11 +25,11 @@ image classifier (Storm 2024).
 ---------------------------------------------------------------------------------
                                     Past Tasks
 ---------------------------------------------------------------------------------
-1. Setup Repos (Github and Overleaf)
-2. Email Authors
-3. Read Paper Blind
-4. 1 On 1 Meeting with Prof
-5. Project Survey
-6. Read Project List
-7. Critical Paper Reread
+7. Took Note While Rereading Paper
+6. Setup Repos (Github and Overleaf)
+5. Email Authors
+4. Read Paper Blind
+3. 1 On 1 Meeting with Prof
+2. Project Survey
+1. Read Project List
 ---------------------------------------------------------------------------------
