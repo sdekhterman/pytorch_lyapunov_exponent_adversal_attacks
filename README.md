@@ -8,21 +8,27 @@ image classifier (Storm 2024).
 ---------------------------------------------------------------------------------
                                     Current Tasks
 ---------------------------------------------------------------------------------
-1. Circle Demo
-    A. Update network output, reference, and the loss function [X]
+1. Write Up Plan
+    A. Finish writing up steps for this...
+
+    B. Find/ replicate Profs example document
     
-    B. Add weight and threshold paramaters to the network [X]
-        Already a thing in the default nn.Tanh setup. I just needed to implement the initialization of the weights andd threshold.
+    C. New title
 
-    C. Compute the Jacobian [X]
+    D. Cite Profs references in .bib file
 
-    D. Compute the first/largest posative eigen value (Finite Time Lyapunov Exponent [FTLE]) [X]
+    E.
 
-    E. Plot FTLE color gradient over the points [X]
+2. Clean Up Repo and More Checks
+    A. Organize the code into classes/ potentially different files. []
 
-    F. Fix FTLE computation since I did  NOT sort the singular value decomp and for fraction this messes with the lower range of the log ouput. 
+    B. Add a multiplot to reflect Figure 2.                         []
 
-2. MNIST Demo
+    C. Make the Readme look like a normal Readme. :|                []
+
+    D. (optional) If I am really feel if replicate Figure 3.        []
+
+3. MNIST Demo
 
 ---------------------------------------------------------------------------------
                                     Past Tasks
@@ -34,6 +40,7 @@ image classifier (Storm 2024).
 5. Emailed Authors
 6. Setup Repos (Github and Overleaf)
 7. Took Notes While Rereading Paper
+8. Reimplmented Circle Demo (Classifcation and FTLE)
 ---------------------------------------------------------------------------------
 
 I'm working on replicating the results from, "Finite-Time Lyapunov Exponents of Deep Neural Networks" from HYSICAL REVIEW LETTERS 132, 057301 (2024).
