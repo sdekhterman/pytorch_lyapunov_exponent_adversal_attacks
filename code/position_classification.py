@@ -11,7 +11,7 @@ class DeepTanhNet(nn.Module):
     def __init__(self, input_size=2, hidden_size=12, hidden_layers=10):
         super(DeepTanhNet, self).__init__()
         layers = [nn.Linear(input_size, hidden_size), nn.Tanh()]
-        for _ in range(hidden_layers - 1):
+        for _ in range(hidden_layers):
             layers += [nn.Linear(hidden_size, hidden_size), nn.Tanh()]
         layers += [nn.Linear(hidden_size, 1), nn.Tanh()]
         self.model = nn.Sequential(*layers)
@@ -40,7 +40,7 @@ class DeepTanhNet(nn.Module):
 
         # A "layer" in the formula corresponds to a (Linear, Tanh) pair.
         # We iterate through the model's layers two at a time.
-        for i in range(0, len(self.model), 2):
+        for i in range(0, len(self.model)-2, 2):
             linear_layer     = self.model[i]
             activation_layer = self.model[i+1]
 
@@ -69,17 +69,10 @@ class DeepTanhNet(nn.Module):
             temp = D_l @ W_l
             jacobian = temp if jacobian is None else temp @ jacobian
         
-        cauchy_green_tensor = torch.transpose(jacobian, 1, 2) @ jacobian
-        eigen_values = torch.linalg.eigvals(cauchy_green_tensor)
-
-        # 1. Get the real part of the complex tensor eigen values.
-        eigen_values_real_parts = torch.real(eigen_values)
-        
-        # 2. Sort the real parts to get the sorting values.
-        sorted_eigen_values, _ = torch.sort(eigen_values_real_parts, dim=-1, descending=True)
-        max_eigen_values       = sorted_eigen_values[:,0]
-        max_singular_values    = torch.sqrt(max_eigen_values)
-        max_lyapunov_exponents = torch.log(max_singular_values)
+        cauchy_green_tensor    = torch.transpose(jacobian, 1, 2) @ jacobian
+        singular_values        = torch.linalg.svdvals(cauchy_green_tensor)
+        max_singular_values    = singular_values[:,0]
+        max_lyapunov_exponents = torch.log10(max_singular_values)
 
         return max_lyapunov_exponents
     
@@ -109,7 +102,7 @@ criterion = nn.MSELoss()
 optimizer = optim.SGD(model.parameters(), lr=0.05)
 
 # Training loop
-for epoch in range(12000):
+for epoch in range(10000):
     model.train()
     optimizer.zero_grad()
     outputs = model(x_train)
@@ -212,9 +205,16 @@ def plot_classification():
     ax.set_aspect('equal')
 
     plt.tight_layout()
-    plt.show()
+
+    # plt.show()
+
+    plt.savefig("circleClasfication.png")
+
+    plt.close()
 
 def plot_finite_time_lyapunov_exponents(resolution = 200):
+    plt.figure(figsize=(3.2*1.2, 2.4*1.2))
+
     x0_min, x0_max = -1.25, 1.25
     x1_min, x1_max = -1.25, 1.25
     x0, x1 = np.meshgrid(np.linspace(x0_min, x0_max, resolution),
@@ -227,16 +227,61 @@ def plot_finite_time_lyapunov_exponents(resolution = 200):
     exp = torch_exp.detach().cpu().numpy().reshape(x1.shape)
 
     # background heatmap
-    pcm = plt.pcolormesh(x0, x1, exp, cmap='RdBu_r', shading='auto')
+    pcm = plt.pcolormesh(x0, x1, exp, cmap='RdBu_r', shading='auto', vmin=-4, vmax=4)
+
+    # --- NEW CODE TO ADD CONTOURS AND TANGENT LINES ---
+
+    # 1. Add tangent vector field (the black lines)
+    # First, compute the gradient of the exponent field.
+    # np.gradient returns the Y-gradient and X-gradient (V, U).
+    V, U = np.gradient(exp)
+
+    # A vector tangent to the contour lines is perpendicular to the gradient.
+    # If the gradient is (U, V), a perpendicular vector is (-V, U).
+    U_tangent = U
+    V_tangent = V
+
+    # 2. Normalize the tangent vectors to get unit vectors
+    # Calculate the magnitude (norm) of each vector.
+    norm = np.sqrt(U_tangent**2 + V_tangent**2)
+    
+    # Use np.divide for safe division, handling cases where norm is 0.
+    # Where norm is 0, the resulting vector will be (0,0).
+    U_unit = np.divide(U_tangent, norm, out=np.zeros_like(U_tangent), where=(norm!=0))
+    V_unit = np.divide(V_tangent, norm, out=np.zeros_like(V_tangent), where=(norm!=0))
+
+    # 3. Subsample the grid for plotting
+    step = 15
+    x0_sub = x0[::step, ::step]
+    x1_sub = x1[::step, ::step]
+    U_sub = U_unit[::step, ::step] # Use the normalized vectors
+    V_sub = V_unit[::step, ::step] # Use the normalized vectors
+
+    # Use quiver to plot the lines. We remove the arrowheads to match the example image.
+    plt.quiver(x0_sub, x1_sub, U_sub, V_sub, color='black',
+               pivot='middle',          # Center the lines on the grid points
+               headwidth=0,             # Remove arrowhead
+               headlength=0,            # Remove arrowhead
+               headaxislength=0,        # Remove arrowhead
+               scale=20,                # Adjusts the length of the lines. May need tuning.
+               linewidths=3)
 
     plt.axis('equal')
+    plt.axis('equal')
+    plt.xlabel("x_0")
+    plt.ylabel("x_1")
+    plt.title("Finite-Time Lyapunov Exponents")
 
     # colorbar
-    plt.colorbar(pcm, label="Ls")
+    plt.colorbar(pcm, label="Max FTLE * L")
 
-    plt.show()
+    # plt.show()
+
+    plt.savefig("FTLE.png")
+
+    
 
 
-# plot_classification()
+plot_classification()
 
 plot_finite_time_lyapunov_exponents()

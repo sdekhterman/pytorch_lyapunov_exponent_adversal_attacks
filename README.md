@@ -35,3 +35,5 @@ image classifier (Storm 2024).
 6. Setup Repos (Github and Overleaf)
 7. Took Notes While Rereading Paper
 ---------------------------------------------------------------------------------
+
+I'm working on replicating the results from, "Finite-Time Lyapunov Exponents of Deep Neural Networks" from HYSICAL REVIEW LETTERS 132, 057301 (2024).
