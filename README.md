@@ -1,46 +1,14 @@
-# ece598_project_code
+# Lyapunov Exponent Informed Adversarial Attacks
+ This repository replicates some of the results from, ["Finite-Time Lyapunov Exponents of Deep Neural Networks" from Physical Review Letters 132, 057301 by L. Storm, H. Linander,  J. Bec, K. Gustavsson, and B. Mehlig (2024)](https://doi.org/10.1103/PhysRevLett.132.057301).
 
----------------------------------------------------------------------------------
-                                    Overall Goal
----------------------------------------------------------------------------------
-Reimplement a method to compute the finite-time Lyapunov exponents for a standard
-image classifier (Storm 2024).
----------------------------------------------------------------------------------
-                                    Current Tasks
----------------------------------------------------------------------------------
-1. Write Up Plan
-    A. Finish writing up steps for this...
+This was done to check that the computation of the Finite-Time Lyapunov Exponents (FTLEs) was implemented correctly. 
 
-    B. Find/ replicate Profs example document
-    
-    C. New title
+As of writing the author plans to implement more parts of the Storm2024 paper, add adversalial attacks, and investidate if the FTLEs can be used to make better adversarial attacks.  
 
-    D. Cite Profs references in .bib file
-
-    E.
-
-2. Clean Up Repo and More Checks
-    A. Organize the code into classes/ potentially different files. []
-
-    B. Add a multiplot to reflect Figure 2.                         []
-
-    C. Make the Readme look like a normal Readme. :|                []
-
-    D. (optional) If I am really feel if replicate Figure 3.        []
-
-3. MNIST Demo
-
----------------------------------------------------------------------------------
-                                    Past Tasks
----------------------------------------------------------------------------------
-1. Read Project List
-2. Project Survey
-3. 1 On 1 Meeting with Prof
-4. Read Paper Blind
-5. Emailed Authors
-6. Setup Repos (Github and Overleaf)
-7. Took Notes While Rereading Paper
-8. Reimplmented Circle Demo (Classifcation and FTLE)
----------------------------------------------------------------------------------
-
-I'm working on replicating the results from, "Finite-Time Lyapunov Exponents of Deep Neural Networks" from HYSICAL REVIEW LETTERS 132, 057301 (2024).
+## Installation
+In a terminal copy the following set of commands
+```
+git clone https://github.com/sdekhterman/pytorch_lyapunov_exponent_adversal_attacks.git
+cd pytorch_lyapunov_exponent_adversal_attacks
+pip install -r requirements.txt
+```

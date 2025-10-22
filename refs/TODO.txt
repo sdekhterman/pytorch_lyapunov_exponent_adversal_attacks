@@ -1,0 +1,21 @@
+## Current Tasks
+1. Clean Up Repo
+    A. Make the Readme look like a normal Readme. :|                []
+    B. Organize the code into classes/ potentially different files. []
+
+2. Basic Replication
+    A. Add a multiplot to reflect Figure 2.                         []
+    B. (optional) If I am really feel if replicate Figure 3.        []
+
+3. MNIST Demo
+
+## Past Tasks
+1. Read Project List
+2. Project Survey
+3. 1 On 1 Meeting with Prof
+4. Read Paper Blind
+5. Emailed Authors
+6. Setup Repos (Github and Overleaf)
+7. Took Notes While Rereading Paper
+8. Reimplmented Circle Demo (Classifcation and FTLE)
+9. Wrote Up Project Plan Plan
