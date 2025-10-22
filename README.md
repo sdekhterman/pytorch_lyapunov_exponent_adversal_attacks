@@ -3,7 +3,7 @@
 
 This was done to check that the computation of the Finite-Time Lyapunov Exponents (FTLEs) was implemented correctly. 
 
-As of writing the author plans to implement more parts of the Storm2024 paper, add adversalial attacks, and investidate if the FTLEs can be used to make better adversarial attacks.  
+As of writing the author plans to re-implement more parts of the Storm2024 paper, add adversalial attacks, and investidate if the FTLEs can be used to make better adversarial attacks.  
 
 ## Installation
 In a terminal copy the following set of commands
