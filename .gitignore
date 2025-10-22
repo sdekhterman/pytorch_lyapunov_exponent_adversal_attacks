@@ -1,4 +1,6 @@
 data/
+# so the reference plots don't get commited
+*.png
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
