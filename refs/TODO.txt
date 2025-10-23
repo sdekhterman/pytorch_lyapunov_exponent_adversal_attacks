@@ -1,9 +1,12 @@
 ## Current Tasks
-2. Basic Replication
-    A. Add a multiplot to reflect Figure 2.                         []
-    B. (optional) If I am really feel if replicate Figure 3.        []
-
-3. MNIST Demo
+1. MNIST Demo
+    A. Train Base MNIST Model                                                                         []
+    B. Train 2D Projection                                                                            []
+    C. Plot 2D projection                                                                             []
+    D. Read H references on how they do the weight initializations                                    [] (might just be the default initialization)/ how many trials are needed for <.> (I might just go through a range until it looks similar to Storm24)
+    E. Compute Hs                                                                                     []
+    F. Compute Average and Standard deviations of the max LE for N = 20                               []
+    G. Plot Average and Standard deviations of the max LE over N = {10 - 120} on a log10 domain scale []
 
 ## Past Tasks
 1.  Read Project List
