@@ -31,34 +31,6 @@ class TanhSoftmaxNet(nn.Module):
 
     def forward(self, x):
         return self.network(x)
-    
-    def max_finite_time_lyapunov_exponents(self, x: torch.Tensor) -> list[torch.Tensor]:
-        if x.dim() == 1:
-            x = x.unsqueeze(0)
-
-        current_input = x
-        jacobian = None
-
-        for i in range(0, len(self.network)-2, 2):
-            linear_layer = self.network[i]
-            activation_layer = self.network[i + 1]
-            W_l = linear_layer.state_dict()['weight']
-
-            b = linear_layer(current_input)
-            tanh_of_b = activation_layer(b)
-            g_prime = 1 - tanh_of_b.pow(2)
-            D_l = torch.diag_embed(g_prime)
-
-            current_input = tanh_of_b
-            temp = D_l @ W_l
-            jacobian = temp if jacobian is None else temp @ jacobian
-        
-        cauchy_green_tensor = torch.transpose(jacobian, 1, 2) @ jacobian
-        singular_values = torch.linalg.svdvals(cauchy_green_tensor)
-        max_singular_values = singular_values[:, 0]
-        max_lyapunov_exponents = torch.log10(max_singular_values)
-
-        return max_lyapunov_exponents
 
 # Define the new network with the bottleneck layer
 class BottleneckNet(nn.Module):
@@ -68,26 +40,20 @@ class BottleneckNet(nn.Module):
         
         # The new layers to be trained
         self.bottleneck = nn.Sequential(
-            nn.Linear(20, 2),
+            nn.Linear(20, 2), # Bottleneck layer with 2 neurons
             nn.Tanh(),
-            nn.Linear(2, number_of_outputs)
+            nn.Linear(2, number_of_outputs) # New output layer
         )
 
     def forward(self, x):
+        # Pass input through the frozen, pre-trained layers
         features = self.feature_extractor(x)
-        self.model = self.bottleneck(features)
-        return self.model
-    
-    def get_bottleneck_activations(self, x):
-        """Helper function to get the 2D activations for visualization."""
-        with torch.no_grad():
-            features = self.feature_extractor(x)
-            output = self.bottleneck(features)
-            return output
-    
+        # Pass the extracted features through the new bottleneck and output layers
+        output = self.bottleneck(features)
+        return output
 
 class MNISTClassification:
-    def __init__(self, learning_rate: float = 0.2, number_of_epochs: int = 10, batch_size: int = 64) -> None:
+    def __init__(self, learning_rate: float = 0.2, number_of_epochs: int = 100, batch_size: int = 64) -> None:
         self.batch_size = batch_size
         self.learning_rate = learning_rate
         self.number_of_epochs = number_of_epochs
@@ -106,15 +72,15 @@ class MNISTClassification:
         self.original_model = None
         self.bottleneck_model = None
 
-    def train_model(self, model, title="Training Phase"):
+    def train_model(self, model, epochs, title="Training Phase"):
         print(f"--- Starting: {title} ---")
-        optimizer = optim.SGD(filter(lambda p: p.requires_grad, model.parameters()),lr=3e-3, momentum=0.9)
+        optimizer = optim.SGD(filter(lambda p: p.requires_grad, model.parameters()), lr=self.learning_rate)
         
         train_losses = []
         test_accuracies = []
         n_total_steps = len(self.train_loader)
 
-        for epoch in range(self.number_of_epochs):
+        for epoch in range(epochs):
             model.train()
             running_loss = 0.0
             for images, labels in self.train_loader:
@@ -149,61 +115,66 @@ class MNISTClassification:
                 test_accuracies.append(acc)
 
             if (epoch + 1) % 20 == 0:
-                print(f'Epoch [{epoch+1}/{self.number_of_epochs}], Loss: {avg_loss:.4f}, Accuracy: {acc:.2f} %')
+                print(f'Epoch [{epoch+1}/{epochs}], Loss: {avg_loss:.4f}, Accuracy: {acc:.2f} %')
         
+        self.plot_training_progress(epochs, train_losses, test_accuracies, title)
         return model
 
-    def visualize_ftle_on_data_points(self):
-            """
-            Visualizes bottleneck activations, coloring each point by its own FTLE value.
-            """
-            print("\n--- Visualizing FTLE Value for Each Data Point ---")
-            if self.bottleneck_model is None:
-                print("Bottleneck model not trained. Cannot visualize.")
-                return
+    def plot_training_progress(self, epochs, losses, accuracies, title):
+        plt.style.use('seaborn-v0_8-whitegrid')
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
+        fig.suptitle(f'Metrics for: {title}', fontsize=16)
 
-            self.bottleneck_model.eval()
-            points = []
-            point_labels = [] # We can still collect labels if we want to compare later
-            max_lyapunov_exponents_list = []
+        ax1.plot(range(epochs), losses, label='Training Loss', color='royalblue')
+        ax1.set_xlabel('Epoch')
+        ax1.set_ylabel('Cross-Entropy Loss')
+        ax1.set_title('Training Loss over Epochs')
+        ax1.legend()
 
-            # Step 1: Get the bottleneck activation points from the test set
-            with torch.no_grad():
-                for images, labels in self.test_loader:
-                    images = images.reshape(-1, 28 * 28).to(self.device)
-                    max_lyapunov_exponents_list.append(self.original_model.max_finite_time_lyapunov_exponents(images).cpu().detach().numpy())
-                    bottleneck_output = self.bottleneck_model.get_bottleneck_activations(images)
-                    points.append(bottleneck_output.cpu().numpy())
-                    point_labels.append(labels.cpu().numpy())
+        ax2.plot(range(epochs), accuracies, label='Test Accuracy', color='seagreen')
+        ax2.set_xlabel('Epoch')
+        ax2.set_ylabel('Accuracy (%)')
+        ax2.set_title('Test Accuracy over Epochs')
+        ax2.legend()
+        ax2.set_ylim(min(accuracies) - 2, 100)
 
-                    print(f"Processed batch with {images.size(0)} samples. Total samples processed: {len(points)}")
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+        plt.show()
 
-            points                      = np.concatenate(points, axis=0)
-            point_labels                = np.concatenate(point_labels, axis=0)
-            max_lyapunov_exponents_list = np.concatenate(max_lyapunov_exponents_list, axis=0)
+    def visualize_bottleneck(self):
+        print("\n--- Visualizing Bottleneck Layer Output ---")
+        self.bottleneck_model.eval()
+        points = []
+        point_labels = []
 
-            # Step 3: Plotting
-            plt.figure(figsize=(12, 10))
-            
-            # Create a scatter plot where color is determined by the FTLE value
-            scatter = plt.scatter(points[:, 0], points[:, 1], c=max_lyapunov_exponents_list, cmap='plasma',
-                                alpha=0.8, s=15)
-            
-            plt.colorbar(scatter, label="Max FTLE ($\log_{10}$ scale)")
-            plt.title('Bottleneck Activations Colored by FTLE Value')
-            plt.xlabel('Neuron 1 Activation')
-            plt.ylabel('Neuron 2 Activation')
-            plt.grid(True, linestyle='--', alpha=0.3)
-            plt.axis('equal')
-            plt.show()
+        with torch.no_grad():
+            for images, labels in self.test_loader:
+                images = images.reshape(-1, 28 * 28).to(self.device)
+                # Get the output from the feature extractor + the first layer of the bottleneck
+                features = self.bottleneck_model.feature_extractor(images)
+                bottleneck_output = self.bottleneck_model.bottleneck[0](features) # Output of the 2-neuron linear layer
+                
+                points.append(bottleneck_output.cpu().numpy())
+                point_labels.append(labels.cpu().numpy())
+
+        points = np.concatenate(points, axis=0)
+        point_labels = np.concatenate(point_labels, axis=0)
+        
+        plt.figure(figsize=(12, 10))
+        scatter = plt.scatter(points[:, 0], points[:, 1], c=point_labels, cmap='tab10', alpha=0.7, s=10)
+        plt.title('2D Bottleneck Layer Activations for Test Data')
+        plt.xlabel('Neuron 1 Activation')
+        plt.ylabel('Neuron 2 Activation')
+        plt.legend(handles=scatter.legend_elements()[0], labels=range(10), title="Digits")
+        plt.grid(True)
+        plt.show()
 
 
 def main():
     # Phase 1: Train the original full network
-    classifier                = MNISTClassification()
-    original_model            = TanhSoftmaxNet().to(classifier.device)
-    classifier.original_model = original_model
-    trained_original_model    = classifier.train_model(original_model, title="Phase 1: Original Model Training")
+    classifier = MNISTClassification(number_of_epochs=100)
+    original_model = TanhSoftmaxNet().to(classifier.device)
+    trained_original_model = classifier.train_model(original_model, epochs=100, title="Phase 1: Original Model Training")
 
     # Phase 2: Create, freeze, and retrain the bottleneck model
     # The feature extractor is all layers *except* the final classification layer
@@ -217,10 +188,10 @@ def main():
     bottleneck_model = BottleneckNet(feature_extractor).to(classifier.device)
     
     # Train only the new bottleneck and output layers
-    classifier.bottleneck_model = classifier.train_model(bottleneck_model, title="Phase 2: Bottleneck Fine-Tuning")
+    classifier.bottleneck_model = classifier.train_model(bottleneck_model, epochs=50, title="Phase 2: Bottleneck Fine-Tuning")
     
-    # Phase 3: Visualize the FTLE value for each data point in the bottleneck space
-    classifier.visualize_ftle_on_data_points()
+    # Visualize the 2D representation from the bottleneck layer
+    classifier.visualize_bottleneck()
 
 
 if __name__ == "__main__":
