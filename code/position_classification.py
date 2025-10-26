@@ -128,65 +128,63 @@ class PositionClassifcation:
         self.domain_bound = 1.25
 
         # Training configuration
-        self.learning_rate = learning_rate
-        self.number_of_epochs = number_of_epochs
+        self.learning_rate      = learning_rate
+        self.number_of_epochs   = number_of_epochs
         self.epoch_print_period = epoch_print_period
         
         # Plotting configuration: classification
         self.test_data_subsample_points = 250
-        self.plot_length = 3.2 * 1.2
-        self.plot_width = 2.4 * 1.2
-        self.default_line_color = 'black'
-        self.marker_size = 40
-        self.inside_alpha = 1.0
-        self.marker_shape = 's'
-        self.inside_label = 'Inside Circle'
-        self.plot_line_width = 1.5
-        self.background_color = 'white'
-        self.outside_edgecolors = 'green'
-        self.outside_alpha = 0.8
-        self.outside_label = 'Outside Circle'
-        self.boarder_color = 'gray'
-        self.boarder_linestyle = '-'
-        self.plot_domain_bound = 1.6
-        self.arrowstyle = '->'
-        self.x_label_position = (1.4, -0.3)
-        self.y_label_position = (0.1, 1.4)
-        self.x_label = 'x1'
-        self.y_label = 'x2'
-        self.plot_font_size = 14
-        self.classification_plot_name = "circleClasfication.png"
+        self.plot_length                = 3.2 * 1.2
+        self.plot_width                 = 2.4 * 1.2
+        self.default_line_color         = 'black'
+        self.marker_size                = 40
+        self.inside_alpha               = 1.0
+        self.marker_shape               = 's'
+        self.inside_label               = 'Inside Circle'
+        self.plot_line_width            = 1.5
+        self.background_color           = 'white'
+        self.outside_edgecolors         = 'green'
+        self.outside_alpha              = 0.8
+        self.outside_label              = 'Outside Circle'
+        self.boarder_color              = 'gray'
+        self.boarder_linestyle          = '-'
+        self.plot_domain_bound          = 1.6
+        self.arrowstyle                 = '->'
+        self.x_label_position           = (1.4, -0.3)
+        self.y_label_position           = (0.1, 1.4)
+        self.x_label                    = 'x1'
+        self.y_label                    = 'x2'
+        self.plot_font_size             = 14
+        self.classification_plot_name   = "circleClasfication.png"
 
         # Plotting configuration: FTLE
-        self.domain_resolution = 200
-        self.heatmap_colors = 'RdBu_r'
-        self.heat_map_shading = 'auto'
-        self.heat_domain_bound = 4
-        self.ftle_plot_data_step = 15
+        self.domain_resolution          = 200
+        self.heatmap_colors             = 'RdBu_r'
+        self.heat_map_shading           = 'auto'
+        self.heat_domain_bound          = 4
+        self.ftle_plot_data_step        = 15
         self.gradient_line_length_scale = 20
-        self.gradient_line_widths = 3
-        self.ftle_plot_grad_line_pivot = 'middle'
-        self.ftle_plot_xlabel = "x_0"
-        self.ftle_plot_ylabel = "x_1"
-        self.ftle_plot_title = "Finite-Time Lyapunov Exponents"
-        self.ftle_colorbar_label = "Max FTLE * L"
-        self.ftle_plot_name = "FTLE.png"
-
-        # Device setup
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.gradient_line_widths       = 3
+        self.ftle_plot_grad_line_pivot  = 'middle'
+        self.ftle_plot_xlabel           = "x_0"
+        self.ftle_plot_ylabel           = "x_1"
+        self.ftle_plot_title            = "Finite-Time Lyapunov Exponents"
+        self.ftle_colorbar_label        = "Max FTLE * L"
+        self.ftle_plot_name             = "FTLE.png"
 
         # Data generation and splitting
         x_all, t_all = self.generate_circle_data()
         x_train, x_test, t_train, t_test = train_test_split(x_all, t_all, test_size=test_size, random_state=seed)
 
         # Convert to tensors
+        self.device  = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.x_train = torch.tensor(x_train, dtype=torch.float32).to(self.device)
         self.t_train = torch.tensor(t_train, dtype=torch.float32).unsqueeze(1).to(self.device)
-        self.x_test = torch.tensor(x_test, dtype=torch.float32).to(self.device)
-        self.t_test = torch.tensor(t_test, dtype=torch.float32).unsqueeze(1).to(self.device)
+        self.x_test  = torch.tensor( x_test, dtype=torch.float32).to(self.device)
+        self.t_test  = torch.tensor( t_test, dtype=torch.float32).unsqueeze(1).to(self.device)
 
         # Model setup
-        self.model = DeepTanhNet().to(self.device)
+        self.model     = DeepTanhNet().to(self.device)
         self.criterion = nn.MSELoss()
 
     def generate_circle_data(self) -> tuple[np.ndarray, np.ndarray]:
@@ -217,7 +215,7 @@ class PositionClassifcation:
             self.model.train()
             optimizer.zero_grad()
             outputs = self.model(self.x_train)
-            loss = self.criterion(outputs, self.t_train)
+            loss    = self.criterion(outputs, self.t_train)
             loss.backward()
             optimizer.step()
 
@@ -225,8 +223,8 @@ class PositionClassifcation:
                 self.model.eval()
                 with torch.no_grad():
                     test_outputs = self.model(self.x_test)
-                    test_preds = torch.sign(test_outputs)
-                    test_acc = (test_preds == self.t_test).float().mean()
+                    test_preds   = torch.sign(test_outputs)
+                    test_acc     = (test_preds == self.t_test).float().mean()
                 print(f"Epoch {epoch+1}, Loss: {loss.item():.4f}, Test Accuracy: {test_acc.item()*100:.2f}%")
     
     @torch.no_grad()
@@ -241,15 +239,15 @@ class PositionClassifcation:
             - `self.classification_plot_name` (e.g., "circleClassification.png")
         """
         t_test_np = self.t_test.detach().cpu().numpy().ravel()
-        x0 = self.x_test[:, 0].detach().cpu().numpy()
-        x1 = self.x_test[:, 1].detach().cpu().numpy()
+        x0        = self.x_test[:, 0].detach().cpu().numpy()
+        x1        = self.x_test[:, 1].detach().cpu().numpy()
 
         subset_idx = np.random.choice(len(t_test_np), size=self.test_data_subsample_points, replace=False)
-        x0_sub = x0[subset_idx]
-        x1_sub = x1[subset_idx]
+        x0_sub     = x0[subset_idx]
+        x1_sub     = x1[subset_idx]
         t_test_sub = t_test_np[subset_idx]
 
-        inside_mask = t_test_sub == 1
+        inside_mask  = t_test_sub == 1
         outside_mask = t_test_sub == -1
 
         plt.figure(figsize=(self.plot_length, self.plot_width))
@@ -258,26 +256,26 @@ class PositionClassifcation:
         plt.scatter(
             x0_sub[inside_mask],
             x1_sub[inside_mask],
-            facecolors=self.default_line_color,
-            edgecolors=self.default_line_color,
-            s=self.marker_size,
-            alpha=self.inside_alpha,
-            marker=self.marker_shape,
-            label=self.inside_label,
-            linewidth=self.plot_line_width
+            facecolors = self.default_line_color,
+            edgecolors = self.default_line_color,
+            s          = self.marker_size,
+            alpha      = self.inside_alpha,
+            marker     = self.marker_shape,
+            label      = self.inside_label,
+            linewidth  = self.plot_line_width
         )
 
         # Outside points
         plt.scatter(
             x0_sub[outside_mask],
             x1_sub[outside_mask],
-            facecolors=self.background_color,
-            edgecolors=self.outside_edgecolors,
-            s=self.marker_size,
-            alpha=self.outside_alpha,
-            marker=self.marker_shape,
-            label=self.outside_label,
-            linewidth=self.plot_line_width
+            facecolors = self.background_color,
+            edgecolors = self.outside_edgecolors,
+            s          = self.marker_size,
+            alpha      = self.outside_alpha,
+            marker     = self.marker_shape,
+            label      = self.outside_label,
+            linewidth  = self.plot_line_width
         )
 
         # Circle boundary
@@ -327,33 +325,33 @@ class PositionClassifcation:
         plt.figure(figsize=(self.plot_length, self.plot_width))
 
         domain_linespace = np.linspace(-self.domain_bound, self.domain_bound, self.domain_resolution)
-        x0, x1 = np.meshgrid(domain_linespace, domain_linespace)
-        grid = np.c_[x0.ravel(), x1.ravel()]
+        x0, x1     = np.meshgrid(domain_linespace, domain_linespace)
+        grid       = np.c_[x0.ravel(), x1.ravel()]
         torch_grid = torch.tensor(grid, dtype=torch.float32).to(self.device)
 
         torch_exp = self.model.max_finite_time_lyapunov_exponents(torch_grid)
-        exp = torch_exp.detach().cpu().numpy().reshape(x1.shape)
+        exp       = torch_exp.detach().cpu().numpy().reshape(x1.shape)
 
         pcm = plt.pcolormesh(x0, x1, exp, cmap=self.heatmap_colors,
                              shading=self.heat_map_shading,
                              vmin=-self.heat_domain_bound, vmax=self.heat_domain_bound)
 
-        V, U = np.gradient(exp)
-        norm = np.sqrt(U**2 + V**2)
+        V, U   = np.gradient(exp)
+        norm   = np.sqrt(U**2 + V**2)
         U_unit = np.divide(U, norm, out=np.zeros_like(U), where=(norm != 0))
         V_unit = np.divide(V, norm, out=np.zeros_like(V), where=(norm != 0))
 
-        x0_sub = x0[::self.ftle_plot_data_step, ::self.ftle_plot_data_step]
-        x1_sub = x1[::self.ftle_plot_data_step, ::self.ftle_plot_data_step]
-        U_sub = U_unit[::self.ftle_plot_data_step, ::self.ftle_plot_data_step]
-        V_sub = V_unit[::self.ftle_plot_data_step, ::self.ftle_plot_data_step]
+        x0_sub =     x0[::self.ftle_plot_data_step, ::self.ftle_plot_data_step]
+        x1_sub =     x1[::self.ftle_plot_data_step, ::self.ftle_plot_data_step]
+        U_sub  = U_unit[::self.ftle_plot_data_step, ::self.ftle_plot_data_step]
+        V_sub  = V_unit[::self.ftle_plot_data_step, ::self.ftle_plot_data_step]
 
         plt.quiver(x0_sub, x1_sub, U_sub, V_sub,
-                   color=self.default_line_color,
-                   pivot=self.ftle_plot_grad_line_pivot,
-                   headwidth=0, headlength=0, headaxislength=0,
-                   scale=self.gradient_line_length_scale,
-                   linewidths=self.gradient_line_widths)
+                   color      = self.default_line_color,
+                   pivot      = self.ftle_plot_grad_line_pivot,
+                   headwidth  = 0, headlength=0, headaxislength=0,
+                   scale      = self.gradient_line_length_scale,
+                   linewidths = self.gradient_line_widths)
         
         plt.axis('equal')
         plt.xlabel(self.ftle_plot_xlabel)
