@@ -15,7 +15,7 @@ class TanhSoftmaxNet(nn.Module):
         
         # Build the sequential model
         layers = [nn.Linear(input_size, hidden_size), nn.Tanh()]
-        for _ in range(hidden_layer - 1): # Adjust loop to build correct number of layers
+        for _ in range(hidden_layer): # Adjust loop to build correct number of layers
             layers += [nn.Linear(hidden_size, hidden_size), nn.Tanh()]
         layers += [nn.Linear(hidden_size, number_of_outputs)]
         
@@ -39,7 +39,7 @@ class TanhSoftmaxNet(nn.Module):
         current_input = x
         jacobian = None
 
-        for i in range(0, len(self.network)-2, 2):
+        for i in range(0, len(self.network)-1, 2):
             linear_layer = self.network[i]
             activation_layer = self.network[i + 1]
             W_l = linear_layer.state_dict()['weight']

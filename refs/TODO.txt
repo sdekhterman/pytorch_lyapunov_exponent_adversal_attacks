@@ -1,11 +1,10 @@
 ## Current Tasks
-1. MNIST Demo                                                                    [X]
-    A. Train 2D Projection                                                                            []
-    B. Plot 2D projection                                                                             []
-    C. Read H references on how they do the weight initializations                                    [] (might just be the default initialization)/ how many trials are needed for <.> (I might just go through a range until it looks similar to Storm24)
-    D. Compute Hs                                                                                     []
-    E. Compute Average and Standard deviations of the max LE for N = 20                               []
-    F. Plot Average and Standard deviations of the max LE over N = {10 - 120} on a log10 domain scale []
+1. MNIST Demo
+    A. Plot 2D projection                                                                             []
+    B. Read H references on how they do the weight initializations                                    [] (might just be the default initialization)/ how many trials are needed for <.> (I might just go through a range until it looks similar to Storm24)
+    C. Compute Hs                                                                                     []
+    D. Compute Average and Standard deviations of the max LE for N = 20                               []
+    E. Plot Average and Standard deviations of the max LE over N = {10 - 120} on a log10 domain scale []
 
 ## Past Tasks
 1.  Read Project List
