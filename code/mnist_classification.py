@@ -97,7 +97,7 @@ class MNISTClassification:
         train_dataset = torchvision.datasets.MNIST(root='./data', train=True, transform=transform, download=True)
         test_dataset = torchvision.datasets.MNIST(root='./data', train=False, transform=transform)
         self.train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=self.batch_size, shuffle=True)
-        self.test_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=self.batch_size, shuffle=False)
+        self.test_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=self.batch_size*16, shuffle=False, num_workers=4, pin_memory=True) # Speed up CPU to GPU transfer
 
         self.criterion = nn.CrossEntropyLoss()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -163,6 +163,23 @@ class MNISTClassification:
                 return
 
             self.bottleneck_model.eval()
+            
+            # --- Step 1: Initialization before the loop ---
+
+            # Get the total number of samples from the dataset
+            num_samples = len(self.test_loader.dataset)
+
+            # Your points are 2-dimensional (x, y)
+            point_dimension = 2 # <-- The only change is here!
+
+            # Pre-allocate the NumPy arrays to their full size
+            all_points    = np.zeros((num_samples, point_dimension), dtype=np.float32)
+            all_labels    = np.zeros( num_samples, dtype=np.int64)
+            all_max_lyaps = np.zeros( num_samples, dtype=np.float32)
+
+            # Keep track of the current position to insert data
+            current_pos = 0
+            
             points = []
             point_labels = [] # We can still collect labels if we want to compare later
             max_lyapunov_exponents_list = []
@@ -170,24 +187,42 @@ class MNISTClassification:
             # Step 1: Get the bottleneck activation points from the test set
             with torch.no_grad():
                 for images, labels in self.test_loader:
+                    # images = images.reshape(-1, 28 * 28).to(self.device)
+                    # max_lyapunov_exponents_list.append(self.original_model.max_finite_time_lyapunov_exponents(images).cpu().numpy())
+                    # bottleneck_output = self.bottleneck_model.get_bottleneck_activations(images)
+                    # points.append(bottleneck_output.cpu().numpy())
+                    # point_labels.append(labels.cpu().numpy())
+
                     images = images.reshape(-1, 28 * 28).to(self.device)
-                    max_lyapunov_exponents_list.append(self.original_model.max_finite_time_lyapunov_exponents(images).cpu().detach().numpy())
-                    bottleneck_output = self.bottleneck_model.get_bottleneck_activations(images)
-                    points.append(bottleneck_output.cpu().numpy())
-                    point_labels.append(labels.cpu().numpy())
+                    batch_size = images.size(0)
 
-                    print(f"Processed batch with {images.size(0)} samples. Total samples processed: {len(points)}")
+                    # Calculate results for the batch
+                    lyaps_batch = self.original_model.max_finite_time_lyapunov_exponents(images).cpu().numpy()
+                    features_batch   = self.bottleneck_model.feature_extractor(images)
+                    bottleneck_batch = self.bottleneck_model.bottleneck[0](features_batch).cpu().numpy() 
+                    labels_batch = labels.cpu().numpy()
 
-            points                      = np.concatenate(points, axis=0)
-            point_labels                = np.concatenate(point_labels, axis=0)
-            max_lyapunov_exponents_list = np.concatenate(max_lyapunov_exponents_list, axis=0)
+                    # Define the slice for the current batch
+                    start_idx = current_pos
+                    end_idx = current_pos + batch_size
+                    
+                    # --- Step 3: Fill the pre-allocated arrays ---
+                    all_max_lyaps[start_idx:end_idx] = lyaps_batch
+                    all_points[start_idx:end_idx, :] = bottleneck_batch
+                    all_labels[start_idx:end_idx] = labels_batch
+
+                    # Update the position for the next batch
+                    current_pos = end_idx
+
+                    print(f"Processed batch with {images.size(0)} samples. Total samples processed: {current_pos}")
 
             # Step 3: Plotting
             plt.figure(figsize=(12, 10))
             
             # Create a scatter plot where color is determined by the FTLE value
-            scatter = plt.scatter(points[:, 0], points[:, 1], c=max_lyapunov_exponents_list, cmap='plasma',
-                                alpha=0.8, s=15)
+            # scatter = plt.scatter(points[:, 0], points[:, 1], c=max_lyapunov_exponents_list, cmap='plasma',
+            #                     alpha=0.8, s=15)
+            scatter = plt.scatter(all_points[:, 0], all_points[:, 1], c=max_lyapunov_exponents_list, cmap='megma', alpha=0.8, s=15)
             
             plt.colorbar(scatter, label="Max FTLE ($\log_{10}$ scale)")
             plt.title('Bottleneck Activations Colored by FTLE Value')
