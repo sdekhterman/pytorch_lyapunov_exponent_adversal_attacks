@@ -87,7 +87,7 @@ class BottleneckNet(nn.Module):
     
 
 class MNISTClassification:
-    def __init__(self, learning_rate: float = 0.2, number_of_epochs: int = 10, batch_size: int = 64) -> None:
+    def __init__(self, learning_rate: float = 0.2, number_of_epochs: int = 200, batch_size: int = 64) -> None:
         self.batch_size = batch_size
         self.learning_rate = learning_rate
         self.number_of_epochs = number_of_epochs
@@ -179,20 +179,10 @@ class MNISTClassification:
 
             # Keep track of the current position to insert data
             current_pos = 0
-            
-            points = []
-            point_labels = [] # We can still collect labels if we want to compare later
-            max_lyapunov_exponents_list = []
 
             # Step 1: Get the bottleneck activation points from the test set
             with torch.no_grad():
                 for images, labels in self.test_loader:
-                    # images = images.reshape(-1, 28 * 28).to(self.device)
-                    # max_lyapunov_exponents_list.append(self.original_model.max_finite_time_lyapunov_exponents(images).cpu().numpy())
-                    # bottleneck_output = self.bottleneck_model.get_bottleneck_activations(images)
-                    # points.append(bottleneck_output.cpu().numpy())
-                    # point_labels.append(labels.cpu().numpy())
-
                     images = images.reshape(-1, 28 * 28).to(self.device)
                     batch_size = images.size(0)
 
@@ -219,10 +209,7 @@ class MNISTClassification:
             # Step 3: Plotting
             plt.figure(figsize=(12, 10))
             
-            # Create a scatter plot where color is determined by the FTLE value
-            # scatter = plt.scatter(points[:, 0], points[:, 1], c=max_lyapunov_exponents_list, cmap='plasma',
-            #                     alpha=0.8, s=15)
-            scatter = plt.scatter(all_points[:, 0], all_points[:, 1], c=max_lyapunov_exponents_list, cmap='megma', alpha=0.8, s=15)
+            scatter = plt.scatter(all_points[:, 0], all_points[:, 1], c=all_max_lyaps, cmap='coolwarm', alpha=0.8, s=15)
             
             plt.colorbar(scatter, label="Max FTLE ($\log_{10}$ scale)")
             plt.title('Bottleneck Activations Colored by FTLE Value')
