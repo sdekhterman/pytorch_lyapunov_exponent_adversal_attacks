@@ -5,19 +5,18 @@ import torch.optim as optim
 import torchvision
 import torchvision.transforms as transforms
 import matplotlib.pyplot as plt
-import numpy as np
+import statistics
 
-# Define the original network architecture
 class TanhSoftmaxNet(nn.Module):
-    def __init__(self, input_size=784, hidden_size=20, hidden_layer=16, number_of_outputs=10):
+    def __init__(self, input_size=784, hidden_layer_size=20, numb_hidden_layers=16, number_of_outputs=10):
         super(TanhSoftmaxNet, self).__init__()
-        self.hidden_size = hidden_size
-        
-        # Build the sequential model
-        layers = [nn.Linear(input_size, hidden_size), nn.Tanh()]
-        for _ in range(hidden_layer): # Adjust loop to build correct number of layers
-            layers += [nn.Linear(hidden_size, hidden_size), nn.Tanh()]
-        layers += [nn.Linear(hidden_size, number_of_outputs)]
+        self.hidden_layer_size = hidden_layer_size
+        self.numb_hidden_layers = numb_hidden_layers
+
+        layers = [nn.Linear(input_size, hidden_layer_size), nn.Tanh()]
+        for _ in range(numb_hidden_layers): # Adjust loop to build correct number of layers
+            layers += [nn.Linear(hidden_layer_size, hidden_layer_size), nn.Tanh()]
+        layers += [nn.Linear(hidden_layer_size, number_of_outputs)]
         
         self.network = nn.Sequential(*layers)
         self._initialize_weights()
@@ -25,7 +24,7 @@ class TanhSoftmaxNet(nn.Module):
     def _initialize_weights(self) -> None:
         for module in self.network:
             if isinstance(module, nn.Linear):
-                nn.init.normal_(module.weight, mean=0.0, std=math.sqrt(1 / self.hidden_size))
+                nn.init.normal_(module.weight, mean=0.0, std=math.sqrt(1 / self.hidden_layer_size))
                 if module.bias is not None:
                     nn.init.constant_(module.bias, 0.0)
 
@@ -58,9 +57,8 @@ class TanhSoftmaxNet(nn.Module):
         max_singular_values = singular_values[:, 0]
         max_lyapunov_exponents = torch.log10(max_singular_values)
 
-        return max_lyapunov_exponents
+        return max_lyapunov_exponents / self.numb_hidden_layers
 
-# Define the new network with the bottleneck layer
 class BottleneckNet(nn.Module):
     def __init__(self, feature_extractor, number_of_outputs=10):
         super(BottleneckNet, self).__init__()
@@ -77,42 +75,50 @@ class BottleneckNet(nn.Module):
         features = self.feature_extractor(x)
         self.model = self.bottleneck(features)
         return self.model
-    
-    def get_bottleneck_activations(self, x):
-        """Helper function to get the 2D activations for visualization."""
-        with torch.no_grad():
-            features = self.feature_extractor(x)
-            output = self.bottleneck(features)
-            return output
-    
+
 
 class MNISTClassification:
-    def __init__(self, learning_rate: float = 0.2, number_of_epochs: int = 200, batch_size: int = 64) -> None:
-        self.batch_size = batch_size
-        self.learning_rate = learning_rate
+    def __init__(self, learning_rate: float = 0.2, number_of_epochs: int = 25 , batch_size: int = 64, display_training_updates = True) -> None:
+        self.batch_size       = batch_size
+        self.learning_rate    = learning_rate
         self.number_of_epochs = number_of_epochs
+        self.display_training_updates = display_training_updates
         
-        # Data loading and transformation
-        transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]) 
-        train_dataset = torchvision.datasets.MNIST(root='./data', train=True, transform=transform, download=True)
-        test_dataset = torchvision.datasets.MNIST(root='./data', train=False, transform=transform)
+        transform         = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]) 
+        train_dataset     = torchvision.datasets.MNIST(root='./data', train=True, transform=transform, download=True)
+        test_dataset      = torchvision.datasets.MNIST(root='./data', train=False, transform=transform)
         self.train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=self.batch_size, shuffle=True)
-        self.test_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=self.batch_size*16, shuffle=False, num_workers=4, pin_memory=True) # Speed up CPU to GPU transfer
+        self.test_loader  = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=1000, shuffle=False, num_workers=4, pin_memory=True) # Speed up CPU to GPU transfer
 
         self.criterion = nn.CrossEntropyLoss()
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device    = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
-        # Models will be initialized in their respective training methods
-        self.original_model = None
+        self.original_model   = None
         self.bottleneck_model = None
+
+    def test_model(self, model):
+        model.eval()
+        with torch.no_grad():
+            n_correct = 0
+            n_samples = 0
+            for images, labels in self.test_loader:
+                images = images.reshape(-1, 28 * 28).to(self.device)
+                labels = labels.to(self.device)
+                outputs = model(images)
+                _, predicted = torch.max(outputs.data, 1)
+                n_samples += labels.size(0)
+                n_correct += (predicted == labels).sum().item()
+
+            acc = 100.0 * n_correct / n_samples
+            return acc
 
     def train_model(self, model, title="Training Phase"):
         print(f"--- Starting: {title} ---")
-        optimizer = optim.SGD(filter(lambda p: p.requires_grad, model.parameters()),lr=3e-3, momentum=0.9)
+        optimizer = optim.SGD(filter(lambda p: p.requires_grad, model.parameters()),lr=5e-3, momentum=0.9)
         
-        train_losses = []
+        train_losses    = []
         test_accuracies = []
-        n_total_steps = len(self.train_loader)
+        n_total_steps   = len(self.train_loader)
 
         for epoch in range(self.number_of_epochs):
             model.train()
@@ -132,117 +138,112 @@ class MNISTClassification:
             avg_loss = running_loss / n_total_steps
             train_losses.append(avg_loss)
 
-            # Evaluate on test set
-            model.eval()
-            with torch.no_grad():
-                n_correct = 0
-                n_samples = 0
-                for images, labels in self.test_loader:
-                    images = images.reshape(-1, 28 * 28).to(self.device)
-                    labels = labels.to(self.device)
-                    outputs = model(images)
-                    _, predicted = torch.max(outputs.data, 1)
-                    n_samples += labels.size(0)
-                    n_correct += (predicted == labels).sum().item()
+            model_accuracy_percent = self.test_model(model)
+            test_accuracies.append(model_accuracy_percent)
 
-                acc = 100.0 * n_correct / n_samples
-                test_accuracies.append(acc)
-
-            if (epoch + 1) % 20 == 0:
-                print(f'Epoch [{epoch+1}/{self.number_of_epochs}], Loss: {avg_loss:.4f}, Accuracy: {acc:.2f} %')
+            if (((epoch + 1) % 5 == 0) and self.display_training_updates):
+                print(f'Epoch [{epoch+1}/{self.number_of_epochs}], Loss: {avg_loss:.4f}, Accuracy: {model_accuracy_percent:.2f} %')
         
         return model
 
     def visualize_ftle_on_data_points(self):
-            """
-            Visualizes bottleneck activations, coloring each point by its own FTLE value.
-            """
             print("\n--- Visualizing FTLE Value for Each Data Point ---")
             if self.bottleneck_model is None:
                 print("Bottleneck model not trained. Cannot visualize.")
                 return
-
+            
+            self.original_model.eval()
             self.bottleneck_model.eval()
             
-            # --- Step 1: Initialization before the loop ---
+            lyaps_list        = []
+            points_list       = []
+            samples_processed = 0
 
-            # Get the total number of samples from the dataset
-            num_samples = len(self.test_loader.dataset)
-
-            # Your points are 2-dimensional (x, y)
-            point_dimension = 2 # <-- The only change is here!
-
-            # Pre-allocate the NumPy arrays to their full size
-            all_points    = np.zeros((num_samples, point_dimension), dtype=np.float32)
-            all_labels    = np.zeros( num_samples, dtype=np.int64)
-            all_max_lyaps = np.zeros( num_samples, dtype=np.float32)
-
-            # Keep track of the current position to insert data
-            current_pos = 0
-
-            # Step 1: Get the bottleneck activation points from the test set
+            # disabling gradient speeds things up
             with torch.no_grad():
-                for images, labels in self.test_loader:
+                for images, _ in self.test_loader:
                     images = images.reshape(-1, 28 * 28).to(self.device)
-                    batch_size = images.size(0)
-
-                    # Calculate results for the batch
-                    lyaps_batch = self.original_model.max_finite_time_lyapunov_exponents(images).cpu().numpy()
+                    lyaps_batch      = self.original_model.max_finite_time_lyapunov_exponents(images)
                     features_batch   = self.bottleneck_model.feature_extractor(images)
-                    bottleneck_batch = self.bottleneck_model.bottleneck[0](features_batch).cpu().numpy() 
-                    labels_batch = labels.cpu().numpy()
-
-                    # Define the slice for the current batch
-                    start_idx = current_pos
-                    end_idx = current_pos + batch_size
+                    bottleneck_batch = self.bottleneck_model.bottleneck[0](features_batch)
                     
-                    # --- Step 3: Fill the pre-allocated arrays ---
-                    all_max_lyaps[start_idx:end_idx] = lyaps_batch
-                    all_points[start_idx:end_idx, :] = bottleneck_batch
-                    all_labels[start_idx:end_idx] = labels_batch
+                    lyaps_list.append(lyaps_batch)
+                    points_list.append(bottleneck_batch)
 
-                    # Update the position for the next batch
-                    current_pos = end_idx
+                    samples_processed += images.size(0)
+                    print(f"Total samples processed: {samples_processed}")
 
-                    print(f"Processed batch with {images.size(0)} samples. Total samples processed: {current_pos}")
+            all_max_lyaps_gpu = torch.cat(lyaps_list, dim=0).cpu().numpy()
+            all_points_gpu    = torch.cat(points_list, dim=0).cpu().numpy()
 
-            # Step 3: Plotting
             plt.figure(figsize=(12, 10))
-            
-            scatter = plt.scatter(all_points[:, 0], all_points[:, 1], c=all_max_lyaps, cmap='coolwarm', alpha=0.8, s=15)
-            
+    
+            scatter = plt.scatter(all_points_gpu[:, 0], all_points_gpu[:, 1], c=all_max_lyaps_gpu, cmap='coolwarm', alpha=0.8, s=15)
+
             plt.colorbar(scatter, label="Max FTLE ($\log_{10}$ scale)")
             plt.title('Bottleneck Activations Colored by FTLE Value')
             plt.xlabel('Neuron 1 Activation')
             plt.ylabel('Neuron 2 Activation')
             plt.grid(True, linestyle='--', alpha=0.3)
             plt.axis('equal')
-            plt.show()
+            plt.savefig("mnist_2d_projection.png", dpi=600)
+            plt.close()
 
 
 def main():
-    # Phase 1: Train the original full network
-    classifier                = MNISTClassification()
-    original_model            = TanhSoftmaxNet().to(classifier.device)
-    classifier.original_model = original_model
-    trained_original_model    = classifier.train_model(original_model, title="Phase 1: Original Model Training")
+    classifier              = MNISTClassification()
+    is_visualizing_ftle     = True # seperated out as 2d projection code is slow (10 minutes+) TODO: optimize later
+    num_models_averaged     = 3
+    hidden_layer_sizes_list = range(10, 115, 5)
 
-    # Phase 2: Create, freeze, and retrain the bottleneck model
-    # The feature extractor is all layers *except* the final classification layer
-    feature_extractor = trained_original_model.network[:-1]
-    
-    # --- FREEZE THE WEIGHTS of the feature extractor ---
-    for param in feature_extractor.parameters():
-        param.requires_grad = False
 
-    # Create the new model with the frozen feature extractor
-    bottleneck_model = BottleneckNet(feature_extractor).to(classifier.device)
-    
-    # Train only the new bottleneck and output layers
-    classifier.bottleneck_model = classifier.train_model(bottleneck_model, title="Phase 2: Bottleneck Fine-Tuning")
-    
-    # Phase 3: Visualize the FTLE value for each data point in the bottleneck space
-    classifier.visualize_ftle_on_data_points()
+    if is_visualizing_ftle:
+        original_model            = TanhSoftmaxNet().to(classifier.device)
+        classifier.original_model = original_model
+        trained_original_model    = classifier.train_model(original_model, title="Phase 1: Original Model Training")
+
+        # last layer not included since that's the classification layer
+        feature_extractor = trained_original_model.network[:-1]
+
+        # freeze weights
+        for param in feature_extractor.parameters():
+            param.requires_grad = False
+
+        bottleneck_model            = BottleneckNet(feature_extractor).to(classifier.device)
+        classifier.bottleneck_model = classifier.train_model(bottleneck_model, title="Phase 2: Bottleneck Fine-Tuning")
+        classifier.visualize_ftle_on_data_points()
+    else:
+        average_accuracy_list               = []
+        standard_dev_of_accuracy_list       = []
+        classifier.display_training_updates = False
+
+        for hidden_layers_size in hidden_layer_sizes_list:
+            print(f"\n--- Training and Testing with {hidden_layers_size} Nodes Per Layer Hidden---")
+            percent_accuaracy_list = []
+            for num in range(num_models_averaged):
+                untrained_model   = TanhSoftmaxNet(hidden_layers_size = hidden_layers_size).to(classifier.device)
+                trained_model     = classifier.train_model(untrained_model, title=f"Model {num+1}/{num_models_averaged} Training")
+                percent_accuaracy = classifier.test_model(trained_model)
+                percent_accuaracy_list.append(percent_accuaracy)
+            average_accuracy         = sum(percent_accuaracy_list) / num_models_averaged
+            standard_dev_of_accuracy = statistics.stdev(percent_accuaracy_list)
+            average_accuracy_list.append(average_accuracy)
+            standard_dev_of_accuracy_list.append(standard_dev_of_accuracy)
+            print(f"Average Accuracy over {num_models_averaged} models: {average_accuracy:.2f} % ± {standard_dev_of_accuracy:.2f} %")
+        
+        fig, (ax1, ax2) = plt.subplots(1, 2) = plt.subplots(1, 2)
+        ax1.plot(hidden_layer_sizes_list,         average_accuracy_list, label='Average Accuracy')
+        ax2.plot(hidden_layer_sizes_list, standard_dev_of_accuracy_list, label='Std Dev of Accuracy')
+        ax1.set(title='semilogx')
+        ax2.set(title='semilogx')
+        ax1.xlabel('N')
+        ax2.xlabel('N')
+        ax1.ylabel('')
+
+        fig.savefig("accuracy_vs_num.png", dpi=600)
+        fig.close()
+
+
 
 
 if __name__ == "__main__":
