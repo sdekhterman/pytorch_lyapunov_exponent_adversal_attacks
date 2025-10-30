@@ -192,9 +192,9 @@ class MNISTClassification:
 
 def main():
     classifier              = MNISTClassification()
-    is_visualizing_ftle     = True # seperated out as 2d projection code is slow (10 minutes+) TODO: optimize later
+    is_visualizing_ftle     = False # seperated out as 2d projection code is slow (10 minutes+) TODO: optimize later
     num_models_averaged     = 3
-    hidden_layer_sizes_list = range(10, 115, 5)
+    hidden_layer_sizes_list = range(10, 120, 30)
 
 
     if is_visualizing_ftle:
@@ -217,11 +217,11 @@ def main():
         standard_dev_of_accuracy_list       = []
         classifier.display_training_updates = False
 
-        for hidden_layers_size in hidden_layer_sizes_list:
-            print(f"\n--- Training and Testing with {hidden_layers_size} Nodes Per Layer Hidden---")
+        for hidden_layer_size in hidden_layer_sizes_list:
+            print(f"\n--- Training and Testing with {hidden_layer_size} Nodes Per Layer Hidden---")
             percent_accuaracy_list = []
             for num in range(num_models_averaged):
-                untrained_model   = TanhSoftmaxNet(hidden_layers_size = hidden_layers_size).to(classifier.device)
+                untrained_model   = TanhSoftmaxNet(hidden_layer_size = hidden_layer_size).to(classifier.device)
                 trained_model     = classifier.train_model(untrained_model, title=f"Model {num+1}/{num_models_averaged} Training")
                 percent_accuaracy = classifier.test_model(trained_model)
                 percent_accuaracy_list.append(percent_accuaracy)
@@ -229,19 +229,18 @@ def main():
             standard_dev_of_accuracy = statistics.stdev(percent_accuaracy_list)
             average_accuracy_list.append(average_accuracy)
             standard_dev_of_accuracy_list.append(standard_dev_of_accuracy)
-            print(f"Average Accuracy over {num_models_averaged} models: {average_accuracy:.2f} % ± {standard_dev_of_accuracy:.2f} %")
         
-        fig, (ax1, ax2) = plt.subplots(1, 2) = plt.subplots(1, 2)
-        ax1.plot(hidden_layer_sizes_list,         average_accuracy_list, label='Average Accuracy')
-        ax2.plot(hidden_layer_sizes_list, standard_dev_of_accuracy_list, label='Std Dev of Accuracy')
-        ax1.set(title='semilogx')
-        ax2.set(title='semilogx')
-        ax1.xlabel('N')
-        ax2.xlabel('N')
-        ax1.ylabel('')
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 2))
+        ax1.semilogx(hidden_layer_sizes_list,         average_accuracy_list, label='Average Accuracy')
+        ax2.semilogx(hidden_layer_sizes_list, standard_dev_of_accuracy_list, label='Std Dev of Accuracy')
+        
 
-        fig.savefig("accuracy_vs_num.png", dpi=600)
-        fig.close()
+        ax1.set_xlabel('N')
+        ax2.set_xlabel('N')
+        ax1.set_ylabel(r'$\langle \lambda_1^{(L)}(\bf{x}$' + r'$) \rangle$')
+        ax2.set_ylabel(r'Std[$\lambda_1^{(L)}(\bf{x}$)]')
+        plt.tight_layout()
+        plt.savefig("accuracy_vs_num.png", dpi=600)
 
 
 
