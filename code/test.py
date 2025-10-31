@@ -385,7 +385,7 @@ class MNISTClassification:
 
 
 def main():
-    num_models_in_ensemble = 5 # Use a smaller ensemble for faster execution for this plot
+    num_models_in_ensemble = 2 # Use a smaller ensemble for faster execution for this plot
     classifier = MNISTClassification(number_of_epochs=20) # Reduced epochs for faster testing
     ensemble_models = []
 
