@@ -56,8 +56,12 @@ class TanhSoftmaxNet(nn.Module):
         singular_values = torch.linalg.svdvals(cauchy_green_tensor)
         max_singular_values = singular_values[:, 0]
         max_lyapunov_exponents = torch.log10(max_singular_values)
+        
+        number_of_hidden_layers_tensor = torch.tensor(self.numb_hidden_layers, dtype=torch.float64, device=max_lyapunov_exponents.device)
+        output = max_lyapunov_exponents / number_of_hidden_layers_tensor
+        output = torch.where(torch.isfinite(output), output, torch.zeros_like(output))
 
-        return max_lyapunov_exponents / self.numb_hidden_layers
+        return output
 
 class BottleneckNet(nn.Module):
     def __init__(self, feature_extractor, number_of_outputs=10):
@@ -78,7 +82,7 @@ class BottleneckNet(nn.Module):
 
 
 class MNISTClassification:
-    def __init__(self, learning_rate: float = 0.2, number_of_epochs: int = 25 , batch_size: int = 64, display_training_updates = True) -> None:
+    def __init__(self, learning_rate: float = 0.2, number_of_epochs: int = 25, batch_size: int = 64, display_training_updates = True) -> None:
         self.batch_size       = batch_size
         self.learning_rate    = learning_rate
         self.number_of_epochs = number_of_epochs
@@ -146,6 +150,26 @@ class MNISTClassification:
         
         return model
 
+    def per_model_ftle(self, model):
+        model.eval()
+        lyaps_list = []
+        samples_processed = 0
+        with torch.no_grad():
+            for images, _ in self.test_loader:
+                images = images.reshape(-1, 28 * 28).to(self.device)
+                lyaps_batch = model.max_finite_time_lyapunov_exponents(images)
+                lyaps_list.append(lyaps_batch)
+
+                samples_processed += images.size(0)
+                print(f"Total samples processed: {samples_processed}")
+
+        all_lyaps_gpu = torch.cat(lyaps_list, dim=0).cpu().numpy()
+        average_lyap  = sum(all_lyaps_gpu) / len(all_lyaps_gpu)
+        stddev_lyap   = statistics.stdev(all_lyaps_gpu.tolist())
+
+
+        return average_lyap, stddev_lyap
+
     def visualize_ftle_on_data_points(self):
             print("\n--- Visualizing FTLE Value for Each Data Point ---")
             if self.bottleneck_model is None:
@@ -180,10 +204,18 @@ class MNISTClassification:
     
             scatter = plt.scatter(all_points_gpu[:, 0], all_points_gpu[:, 1], c=all_max_lyaps_gpu, cmap='coolwarm', alpha=0.8, s=15)
 
-            plt.colorbar(scatter, label="Max FTLE ($\log_{10}$ scale)")
-            plt.title('Bottleneck Activations Colored by FTLE Value')
-            plt.xlabel('Neuron 1 Activation')
-            plt.ylabel('Neuron 2 Activation')
+            cbar = plt.colorbar(scatter, label="Max FTLE ($\log_{10}$ scale)")
+            cbar.ax.yaxis.label.set_size(14)     # label font
+            cbar.ax.tick_params(labelsize=12)    # ticks
+            plt.title('Bottleneck Activations Colored by FTLE Value'  , fontsize=16)
+            plt.xlabel('Neuron 1 Activation', fontsize=14)
+            plt.ylabel('Neuron 2 Activation', fontsize=14)
+            plt.rc('axes', labelsize=14)
+            plt.rc('xtick', labelsize=14)
+            plt.rc('ytick', labelsize=14)
+            plt.tick_params(axis='x', labelsize=14)
+            plt.tick_params(axis='y', labelsize=14)
+            plt.rc('font', size=14)
             plt.grid(True, linestyle='--', alpha=0.3)
             plt.axis('equal')
             plt.savefig("mnist_2d_projection.png", dpi=600)
@@ -192,7 +224,7 @@ class MNISTClassification:
 
 def main():
     classifier              = MNISTClassification()
-    is_visualizing_ftle     = False # seperated out as 2d projection code is slow (10 minutes+) TODO: optimize later
+    is_visualizing_ftle     = True # seperated out as 2d projection code is slow (10 minutes+) TODO: optimize later
     num_models_averaged     = 3
     hidden_layer_sizes_list = range(10, 120, 30)
 
@@ -213,26 +245,33 @@ def main():
         classifier.bottleneck_model = classifier.train_model(bottleneck_model, title="Phase 2: Bottleneck Fine-Tuning")
         classifier.visualize_ftle_on_data_points()
     else:
-        average_accuracy_list               = []
-        standard_dev_of_accuracy_list       = []
-        classifier.display_training_updates = False
+        average_eig1_list                   = []
+        standard_dev_eig1_list              = []
+        # classifier.display_training_updates = False
 
         for hidden_layer_size in hidden_layer_sizes_list:
             print(f"\n--- Training and Testing with {hidden_layer_size} Nodes Per Layer Hidden---")
-            percent_accuaracy_list = []
+            average_eig1_size_i_list = []
+            std_eig1_size_i_list = []
+
             for num in range(num_models_averaged):
                 untrained_model   = TanhSoftmaxNet(hidden_layer_size = hidden_layer_size).to(classifier.device)
                 trained_model     = classifier.train_model(untrained_model, title=f"Model {num+1}/{num_models_averaged} Training")
-                percent_accuaracy = classifier.test_model(trained_model)
-                percent_accuaracy_list.append(percent_accuaracy)
-            average_accuracy         = sum(percent_accuaracy_list) / num_models_averaged
-            standard_dev_of_accuracy = statistics.stdev(percent_accuaracy_list)
-            average_accuracy_list.append(average_accuracy)
-            standard_dev_of_accuracy_list.append(standard_dev_of_accuracy)
+                average_eig1, standard_dev_eig1 = classifier.per_model_ftle(trained_model)
+                
+                average_eig1_size_i_list.append(average_eig1)
+                std_eig1_size_i_list.append(standard_dev_eig1)
+
+            average_eig1         = sum(average_eig1_size_i_list) / num_models_averaged
+            standard_dev_of_eig1 = sum(std_eig1_size_i_list) / num_models_averaged
+            
+            average_eig1_list.append(average_eig1)
+            standard_dev_eig1_list.append(standard_dev_of_eig1)
         
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 2))
-        ax1.semilogx(hidden_layer_sizes_list,         average_accuracy_list, label='Average Accuracy')
-        ax2.semilogx(hidden_layer_sizes_list, standard_dev_of_accuracy_list, label='Std Dev of Accuracy')
+        ax1.semilogx(hidden_layer_sizes_list,         average_eig1_list, label='Average Accuracy')
+        ax2.semilogx(hidden_layer_sizes_list, standard_dev_eig1_list, label='Std Dev of Accuracy')
+
         
 
         ax1.set_xlabel('N')
