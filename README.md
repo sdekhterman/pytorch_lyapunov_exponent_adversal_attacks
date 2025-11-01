@@ -8,6 +8,7 @@ As of writing the author plans to re-implement more parts of the Storm2024 paper
 ## Installation
 In a terminal copy the following set of commands
 ```
+conda create --name lyap_exp_attacks
 git clone https://github.com/sdekhterman/pytorch_lyapunov_exponent_adversal_attacks.git
 cd pytorch_lyapunov_exponent_adversal_attacks
 pip install -r requirements.txt
