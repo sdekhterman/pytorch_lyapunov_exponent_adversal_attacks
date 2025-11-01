@@ -6,7 +6,7 @@ This was done to check that the computation of the Finite-Time Lyapunov Exponent
 As of writing the author plans to re-implement more parts of the Storm2024 paper, add adversalial attacks, and investidate if the FTLEs can be used to make better adversarial attacks.  
 
 ## Installation
-I assumed that the Python virtual enviroment (used to keep python packages version need for the code to run from conflicting with what you have already installed) was created using the conda package. For install instuctions of conda see https://docs.conda.io/projects/conda/en/stable/user-guide/install/index.html.
+I assumed that the Python virtual enviroment (used to keep python packages version need for the code to run from conflicting with what you have already installed) was created using the conda package. For install instuctions of conda see https://docs.conda.io/projects/conda/en/stable/user-guide/install/index.html. This repositry also used PyTorch to train the deep neural network. If you have conflicts when installing the requirments.txt consider visiting https://pytorch.org/get-started/locally/ to get a version appropriate for your machine/ container.
 
 After installing conda, in a terminal copy the following set of commands 
 ```
