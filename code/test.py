@@ -6,20 +6,17 @@ import torchvision
 import torchvision.transforms as transforms
 import matplotlib.pyplot as plt
 import numpy as np
-import time
 
-# (Keep your existing TanhSoftmaxNet, BottleneckNet, and MNISTClassification classes here)
-# ... [Your TanhSoftmaxNet, BottleneckNet, MNISTClassification classes] ...
 class TanhSoftmaxNet(nn.Module):
-    def __init__(self, input_size=784, hidden_size=20, hidden_layer=16, number_of_outputs=10):
+    def __init__(self, input_size=784, hidden_layer_size=20, numb_hidden_layers=16, number_of_outputs=10):
         super(TanhSoftmaxNet, self).__init__()
-        self.hidden_size = hidden_size
-        
-        # Build the sequential model
-        layers = [nn.Linear(input_size, hidden_size), nn.Tanh()]
-        for _ in range(hidden_layer): # Adjust loop to build correct number of layers
-            layers += [nn.Linear(hidden_size, hidden_size), nn.Tanh()]
-        layers += [nn.Linear(hidden_size, number_of_outputs)]
+        self.hidden_layer_size = hidden_layer_size
+        self.numb_hidden_layers = numb_hidden_layers
+
+        layers = [nn.Linear(input_size, hidden_layer_size), nn.Tanh()]
+        for _ in range(numb_hidden_layers): # Adjust loop to build correct number of layers
+            layers += [nn.Linear(hidden_layer_size, hidden_layer_size), nn.Tanh()]
+        layers += [nn.Linear(hidden_layer_size, number_of_outputs)]
         
         self.network = nn.Sequential(*layers)
         self._initialize_weights()
@@ -27,7 +24,7 @@ class TanhSoftmaxNet(nn.Module):
     def _initialize_weights(self) -> None:
         for module in self.network:
             if isinstance(module, nn.Linear):
-                nn.init.normal_(module.weight, mean=0.0, std=math.sqrt(1 / self.hidden_size))
+                nn.init.normal_(module.weight, mean=0.0, std=math.sqrt(1 / self.hidden_layer_size))
                 if module.bias is not None:
                     nn.init.constant_(module.bias, 0.0)
 
@@ -59,33 +56,12 @@ class TanhSoftmaxNet(nn.Module):
         singular_values = torch.linalg.svdvals(cauchy_green_tensor)
         max_singular_values = singular_values[:, 0]
         max_lyapunov_exponents = torch.log10(max_singular_values)
-
-        return max_lyapunov_exponents / self.hidden_size
-
-# Define the new network with the bottleneck layer
-class BottleneckNet(nn.Module):
-    def __init__(self, feature_extractor, number_of_outputs=10):
-        super(BottleneckNet, self).__init__()
-        self.feature_extractor = feature_extractor
         
-        # The new layers to be trained
-        self.bottleneck = nn.Sequential(
-            nn.Linear(20, 2),
-            nn.Tanh(),
-            nn.Linear(2, number_of_outputs)
-        )
+        number_of_hidden_layers_tensor = torch.tensor(self.numb_hidden_layers, dtype=torch.float64, device=max_lyapunov_exponents.device)
+        output = max_lyapunov_exponents / number_of_hidden_layers_tensor
+        output = torch.where(torch.isfinite(output), output, torch.zeros_like(output))
 
-    def forward(self, x):
-        features = self.feature_extractor(x)
-        self.model = self.bottleneck(features)
-        return self.model
-    
-    def get_bottleneck_activations(self, x):
-        """Helper function to get the 2D activations for visualization."""
-        with torch.no_grad():
-            features = self.feature_extractor(x)
-            output = self.bottleneck(features)
-            return output
+        return output
     
 
 class MNISTClassification:
@@ -158,105 +134,6 @@ class MNISTClassification:
         
         return model
 
-    def visualize_ftle_on_data_points(self):
-            """
-            Visualizes bottleneck activations, coloring each point by its own FTLE value.
-            """
-            print("\n--- Visualizing FTLE Value for Each Data Point ---")
-            if self.bottleneck_model is None:
-                print("Bottleneck model not trained. Cannot visualize.")
-                return
-            
-            self.original_model.eval()
-            self.bottleneck_model.eval()
-            
-            # Pre-create lists to store batch results on the GPU
-            lyaps_list = []
-            points_list = []
-            labels_list = []
-
-            # --- Step 2: Process all data with optimizations ---
-            # Disable gradient calculation for a massive speedup
-            samples_processed = 0
-            with torch.no_grad():
-                for images, _ in self.test_loader:
-                    # Move data to the GPU
-                    images = images.reshape(-1, 28 * 28).to(self.device)
-
-                    # --- Perform calculations on the GPU ---
-                    lyaps_batch      = self.original_model.max_finite_time_lyapunov_exponents(images)
-                    features_batch   = self.bottleneck_model.feature_extractor(images)
-                    bottleneck_batch = self.bottleneck_model.bottleneck[0](features_batch)
-                    
-                    # --- Append the GPU tensors to our lists (no .cpu() here!) ---
-                    lyaps_list.append(lyaps_batch)
-                    points_list.append(bottleneck_batch)
-
-                    samples_processed += images.size(0)
-                    print(f"Total samples processed: {samples_processed}")
-
-            # --- Step 3: Consolidate results after the loop ---
-            # Concatenate all batch tensors into single large tensors on the GPU
-            all_max_lyaps_gpu = torch.cat(lyaps_list, dim=0).cpu().numpy()
-            all_points_gpu    = torch.cat(points_list, dim=0).cpu().numpy()
-
-            # Step 3: Plotting
-            plt.figure(figsize=(12, 10))
-            
-
-            scatter = plt.scatter(all_points_gpu[:, 0], all_points_gpu[:, 1], c=all_max_lyaps_gpu, cmap='coolwarm', alpha=0.8, s=15)
-            
-            plt.colorbar(scatter, label="Max FTLE ($\log_{10}$ scale)")
-            plt.title('Bottleneck Activations Colored by FTLE Value')
-            plt.xlabel('Neuron 1 Activation')
-            plt.ylabel('Neuron 2 Activation')
-            plt.grid(True, linestyle='--', alpha=0.3)
-            plt.axis('equal')
-            plt.savefig("mnist_2d_projection.png", dpi=600)
-            plt.close()
-
-    def compute_ensemble_entropy(self, ensemble_models, data_loader):
-        """
-        Computes the entropy H over an ensemble of models.
-        H = -Σᵢ <pᵢ> log(<pᵢ>)
-        where <pᵢ> is the probability of class i averaged over the ensemble and the dataset.
-        """
-        print("\n--- Calculating Ensemble Entropy ---")
-        all_probs = []
-        softmax = nn.Softmax(dim=1)
-
-        # Step 1: Get softmax predictions from every model in the ensemble
-        for model in ensemble_models:
-            model.eval()
-            model_probs = []
-            with torch.no_grad():
-                for images, _ in data_loader:
-                    images = images.reshape(-1, 28 * 28).to(self.device)
-                    outputs = model(images)
-                    probabilities = softmax(outputs)
-                    model_probs.append(probabilities)
-            
-            # Concatenate probabilities for the current model and add to the list
-            all_probs.append(torch.cat(model_probs, dim=0))
-
-        # Step 2: Calculate the average probability <xᵢ>
-        # Stack into a tensor of shape [num_models, num_samples, num_classes]
-        ensemble_outputs = torch.stack(all_probs)
-        
-        # Average over the ensemble (dim=0) and then over the dataset (dim=0 again)
-        avg_probs_per_sample = torch.mean(ensemble_outputs, dim=0)
-        avg_prob_distribution = torch.mean(avg_probs_per_sample, dim=0)
-
-        print(f"Average probability distribution <xᵢ>: {avg_prob_distribution.cpu().numpy()}")
-
-        # Step 3: Compute the entropy H
-        # Add a small epsilon for numerical stability to avoid log(0)
-        epsilon = 1e-9
-        H = -torch.sum(avg_prob_distribution * torch.log(avg_prob_distribution + epsilon))
-        
-        return H.item()
-
-
     def plot_error_and_entropy_vs_lambda1(self, ensemble_models, bin_edges=50):
         """
         Replicates the plot of classification error and predictive uncertainty (H)
@@ -273,8 +150,8 @@ class MNISTClassification:
         softmax = nn.Softmax(dim=1)
         epsilon = 1e-9 # for log stability
 
-        self.test_loader.batch_size = 100 # Adjust batch size for more granular processing if needed
-
+        # self.test_loader.batch_size = 100 # Adjust batch size for more granular processing if needed
+        samples_processed = 0
         with torch.no_grad():
             for images, labels in self.test_loader:
                 images = images.reshape(-1, 28 * 28).to(self.device)
@@ -293,6 +170,9 @@ class MNISTClassification:
                     outputs = model(images)
                     probs = softmax(outputs)
                     batch_ensemble_probs.append(probs)
+
+                    samples_processed += images.size(0)
+                    print(f"Total samples processed: {samples_processed}")
                 
                 # Average lambda_1 across the ensemble for each image (if multiple lambda_1s per image were computed)
                 # For this problem, max_finite_time_lyapunov_exponents returns one value per image.
@@ -329,8 +209,8 @@ class MNISTClassification:
         max_lambda1 = np.max(all_lambda1s)
         lambda_bins = np.linspace(min_lambda1, max_lambda1, bin_edges)
 
-        binned_lambda1 = []
-        binned_errors = []
+        binned_lambda1   = []
+        binned_errors    = []
         binned_entropies = []
 
         # Iterate through bins and calculate average error and entropy
@@ -346,7 +226,7 @@ class MNISTClassification:
             
             if len(bin_indices[0]) > 0:
                 avg_lambda1_in_bin = np.mean(all_lambda1s[bin_indices])
-                avg_error_in_bin = np.mean(all_errors[bin_indices]) * 100 # Convert to percentage
+                avg_error_in_bin   = np.mean(all_errors[bin_indices]) * 100 # Convert to percentage
                 avg_entropy_in_bin = np.mean(all_entropies[bin_indices])
 
                 binned_lambda1.append(avg_lambda1_in_bin)
@@ -354,7 +234,7 @@ class MNISTClassification:
                 binned_entropies.append(avg_entropy_in_bin)
 
         # Plotting
-        fig, ax1 = plt.subplots(figsize=(10, 6))
+        fig, ax1 = plt.subplots(figsize=(10, 4))
 
         color_error = 'black'
         ax1.set_xlabel(r'$\lambda_1^{(L)}(\mathbf{x})$')
@@ -374,10 +254,6 @@ class MNISTClassification:
         ax1.grid(True, linestyle='--', alpha=0.6)
         plt.title('Classification Error and Predictive Uncertainty vs. $\lambda_1^{(L)}(\mathbf{x})$')
 
-        # Add 'b' label as in the reference image
-        fig.text(0.1, 0.85, '(b)', transform=ax1.transAxes, fontsize=16, va='top')
-
-
         fig.tight_layout()  # otherwise the right y-label is slightly clipped
         plt.savefig("error_entropy_vs_lambda1.png", dpi=300)
         plt.close()
@@ -385,7 +261,7 @@ class MNISTClassification:
 
 
 def main():
-    num_models_in_ensemble = 2 # Use a smaller ensemble for faster execution for this plot
+    num_models_in_ensemble = 5 # Use a smaller ensemble for faster execution for this plot
     classifier = MNISTClassification(number_of_epochs=20) # Reduced epochs for faster testing
     ensemble_models = []
 

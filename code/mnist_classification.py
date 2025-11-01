@@ -6,6 +6,7 @@ import torchvision
 import torchvision.transforms as transforms
 import matplotlib.pyplot as plt
 import statistics
+import numpy as np
 
 class TanhSoftmaxNet(nn.Module):
     def __init__(self, input_size=784, hidden_layer_size=20, numb_hidden_layers=16, number_of_outputs=10):
@@ -220,11 +221,139 @@ class MNISTClassification:
             plt.axis('equal')
             plt.savefig("mnist_2d_projection.png", dpi=600)
             plt.close()
+        
+
+    def plot_error_and_entropy_vs_lambda1(self, ensemble_models, bin_edges=50):
+        """
+        Replicates the plot of classification error and predictive uncertainty (H)
+        as functions of lambda_1 (max Lyapunov exponent).
+        """
+        print("\n--- Generating Error and Entropy vs. Lambda_1 Plot ---")
+        if not ensemble_models:
+            print("No models provided for ensemble. Cannot generate plot.")
+            return
+
+        all_lambda1s = []
+        all_errors = []
+        all_entropies = []
+        softmax = nn.Softmax(dim=1)
+        epsilon = 1e-9 # for log stability
+
+        # self.test_loader.batch_size = 100 # Adjust batch size for more granular processing if needed
+        samples_processed = 0
+        with torch.no_grad():
+            for images, labels in self.test_loader:
+                images = images.reshape(-1, 28 * 28).to(self.device)
+                labels = labels.to(self.device)
+
+                batch_lambda1s = []
+                batch_ensemble_probs = [] # To store probabilities for each image across ensemble
+
+                for model in ensemble_models:
+                    model.eval()
+                    # Calculate lambda_1 for each image
+                    lyap_exp = model.max_finite_time_lyapunov_exponents(images)
+                    batch_lambda1s.append(lyap_exp.cpu().numpy())
+
+                    # Get softmax probabilities for each image from this model
+                    outputs = model(images)
+                    probs = softmax(outputs)
+                    batch_ensemble_probs.append(probs)
+
+                    samples_processed += images.size(0)
+                    print(f"Total samples processed: {samples_processed}")
+                
+                # Average lambda_1 across the ensemble for each image (if multiple lambda_1s per image were computed)
+                # For this problem, max_finite_time_lyapunov_exponents returns one value per image.
+                # So we just take the first model's lambda_1 for now, or average if desired.
+                # The paper implies one lambda_1 per input x. So we use the first model's.
+                avg_batch_lambda1 = np.mean(np.array(batch_lambda1s), axis=0) # average across models for stability, or just use one
+                all_lambda1s.extend(avg_batch_lambda1)
+
+                # For each image, average probabilities across the ensemble
+                # stack -> [num_models, batch_size, num_classes]
+                ensemble_probs_for_batch = torch.stack(batch_ensemble_probs)
+                # average -> [batch_size, num_classes]
+                avg_probs_per_image = torch.mean(ensemble_probs_for_batch, dim=0) 
+                
+                # Calculate entropy H for each image based on its averaged probabilities
+                entropies_per_image = -torch.sum(avg_probs_per_image * torch.log(avg_probs_per_image + epsilon), dim=1)
+                all_entropies.extend(entropies_per_image.cpu().numpy())
+
+                # Determine error for each image using the prediction from the first model (or the ensemble majority vote)
+                # For error, we usually check against a single model's prediction or a majority vote.
+                # Let's use the first model's prediction for simplicity for error calculation per image.
+                first_model_outputs = ensemble_models[0](images)
+                _, predicted = torch.max(first_model_outputs.data, 1)
+                is_correct = (predicted == labels)
+                all_errors.extend((~is_correct).cpu().numpy()) # True for error, False for correct
+
+        # Convert to numpy arrays for easier manipulation
+        all_lambda1s = np.array(all_lambda1s)
+        all_errors = np.array(all_errors).astype(float) # convert bool to float for averaging
+        all_entropies = np.array(all_entropies)
+
+        # Bin the data by lambda_1 values
+        min_lambda1 = np.min(all_lambda1s)
+        max_lambda1 = np.max(all_lambda1s)
+        lambda_bins = np.linspace(min_lambda1, max_lambda1, bin_edges)
+
+        binned_lambda1   = []
+        binned_errors    = []
+        binned_entropies = []
+
+        # Iterate through bins and calculate average error and entropy
+        for i in range(len(lambda_bins) - 1):
+            lower_bound = lambda_bins[i]
+            upper_bound = lambda_bins[i+1]
+            
+            # Find indices of samples falling into the current bin
+            if i == len(lambda_bins) - 2: # Include the max value in the last bin
+                bin_indices = np.where((all_lambda1s >= lower_bound) & (all_lambda1s <= upper_bound))
+            else:
+                bin_indices = np.where((all_lambda1s >= lower_bound) & (all_lambda1s < upper_bound))
+            
+            if len(bin_indices[0]) > 0:
+                avg_lambda1_in_bin = np.mean(all_lambda1s[bin_indices])
+                avg_error_in_bin   = np.mean(all_errors[bin_indices]) * 100 # Convert to percentage
+                avg_entropy_in_bin = np.mean(all_entropies[bin_indices])
+
+                binned_lambda1.append(avg_lambda1_in_bin)
+                binned_errors.append(avg_error_in_bin)
+                binned_entropies.append(avg_entropy_in_bin)
+
+        # Plotting
+        fig, ax1 = plt.subplots(figsize=(10, 4))
+
+        color_error = 'black'
+        ax1.set_xlabel(r'$\lambda_1^{(L)}(\mathbf{x})$')
+        ax1.set_ylabel('Test error (%)', color=color_error)
+        ax1.plot(binned_lambda1, binned_errors, color=color_error, label='Test error (%)')
+        ax1.tick_params(axis='y', labelcolor=color_error)
+        ax1.set_ylim(bottom=0) # Error should not go below 0
+
+        ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
+        color_entropy = 'green'
+        ax2.set_ylabel(r'$H$', color=color_entropy)  # we already handled the x-label with ax1
+        ax2.plot(binned_lambda1, binned_entropies, color=color_entropy, label='H')
+        ax2.tick_params(axis='y', labelcolor=color_entropy)
+        ax2.set_ylim(bottom=0) # Entropy should not go below 0
+
+        # Add grid and title for better readability
+        ax1.grid(True, linestyle='--', alpha=0.6)
+        plt.title('Classification Error and Predictive Uncertainty vs. $\lambda_1^{(L)}(\mathbf{x})$')
+
+        fig.tight_layout()  # otherwise the right y-label is slightly clipped
+        plt.savefig("error_entropy_vs_lambda1.png", dpi=300)
+        plt.close()
+        print("Plot saved as error_entropy_vs_lambda1.png")
+
 
 
 def main():
     classifier              = MNISTClassification()
     is_visualizing_ftle     = False # seperated out as 2d projection code is slow (10 minutes+) TODO: optimize later
+    is_plotting_error_entropy = True
     num_models_averaged     = 5
     hidden_layer_sizes_list = range(10, 120, 5)
 
@@ -244,6 +373,15 @@ def main():
         bottleneck_model            = BottleneckNet(feature_extractor).to(classifier.device)
         classifier.bottleneck_model = classifier.train_model(bottleneck_model, title="Phase 2: Bottleneck Fine-Tuning")
         classifier.visualize_ftle_on_data_points()
+    elif is_plotting_error_entropy:
+        ensemble_models = []
+        for num in range(num_models_averaged):
+            print(f"\n--- Training Ensemble Model {num+1}/{num_models_averaged} ---")
+            untrained_model = TanhSoftmaxNet().to(classifier.device)
+            trained_model   = classifier.train_model(untrained_model, title=f"Ensemble Model {num+1} Training")
+            ensemble_models.append(trained_model)
+        
+        classifier.plot_error_and_entropy_vs_lambda1(ensemble_models)
     else:
         average_eig1_list                   = []
         standard_dev_eig1_list              = []
@@ -272,17 +410,12 @@ def main():
         ax1.semilogx(hidden_layer_sizes_list,         average_eig1_list, label='Average Accuracy')
         ax2.semilogx(hidden_layer_sizes_list, standard_dev_eig1_list, label='Std Dev of Accuracy')
 
-        
-
         ax1.set_xlabel('N')
         ax2.set_xlabel('N')
         ax1.set_ylabel(r'$\langle \lambda_1^{(L)}(\bf{x}$' + r'$) \rangle$')
         ax2.set_ylabel(r'Std[$\lambda_1^{(L)}(\bf{x}$)]')
         plt.tight_layout()
         plt.savefig("accuracy_vs_num.png", dpi=600)
-
-
-
 
 if __name__ == "__main__":
     main()
