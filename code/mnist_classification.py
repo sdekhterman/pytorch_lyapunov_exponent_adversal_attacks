@@ -351,11 +351,11 @@ class MNISTClassification:
 
 
 def main():
-    classifier              = MNISTClassification()
-    is_visualizing_ftle     = False # seperated out as 2d projection code is slow (10 minutes+) TODO: optimize later
+    classifier                = MNISTClassification()
+    is_visualizing_ftle       = False # seperated out as 2d projection code is slow (10 minutes+) TODO: optimize later
     is_plotting_error_entropy = True
-    num_models_averaged     = 5
-    hidden_layer_sizes_list = range(10, 120, 5)
+    num_models_averaged       = 5
+    hidden_layer_sizes_list   = range(10, 120, 5)
 
 
     if is_visualizing_ftle:
