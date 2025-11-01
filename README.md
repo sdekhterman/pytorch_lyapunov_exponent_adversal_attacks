@@ -17,6 +17,13 @@ conda activate lyap_exp_attacks
 git clone https://github.com/sdekhterman/pytorch_lyapunov_exponent_adversal_attacks.git
 cd pytorch_lyapunov_exponent_adversal_attacks
 pip install -r requirements.txt
+```
+## Run Code
+After installing the code,
+```
 cd code
+```
+and run the main file of interest
+```
 python3 mnist_classification.py
 ```
