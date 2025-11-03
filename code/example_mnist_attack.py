@@ -4,9 +4,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
 import matplotlib.pyplot as plt
-import numpy as np
-
-# --- 1. Define the Deep Fully Connected Network ---
+import os
 
 class DeepFCNet(nn.Module):
     def __init__(self):
@@ -18,7 +16,7 @@ class DeepFCNet(nn.Module):
         self.fc4 = nn.Linear(64, 10) # 10 output classes for digits 0-9
 
     def forward(self, x):
-        # Flatten the image from [batch_size, 1, 28, 28] to [batch_size, 784]
+        # Flatten the images from [batch_size, 1, 28, 28] to [batch_size, 784]
         x = x.view(-1, 784)
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
@@ -27,111 +25,82 @@ class DeepFCNet(nn.Module):
         # No softmax needed here, as F.cross_entropy() combines it
         return x
 
-# --- 2. Load Data and Define Training/Testing ---
 
-# Use CUDA if available
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-# MNIST DataLoaders
-transform = transforms.ToTensor()
-train_loader = torch.utils.data.DataLoader(
-    datasets.MNIST('../data', train=True, download=True, transform=transform),
-    batch_size=64, shuffle=True)
-test_loader = torch.utils.data.DataLoader(
-    datasets.MNIST('../data', train=False, download=True, transform=transform),
-    batch_size=1, shuffle=True) # Batch size 1 for easy attack example
-
-# --- 3. (Optional) Train the Model ---
-# In a real scenario, you'd load a pre-trained model.
-# For this example, we'll train for just one epoch.
-
-model = DeepFCNet().to(device)
-optimizer = optim.Adam(model.parameters(), lr=0.001)
-loss_fn = nn.CrossEntropyLoss()
+device       = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+transform    = transforms.ToTensor()
+train_loader = torch.utils.data.DataLoader(datasets.MNIST('../data', train=True , download=True, transform=transform), batch_size=64, shuffle=True)
+test_loader  = torch.utils.data.DataLoader(datasets.MNIST('../data', train=False, download=True, transform=transform), batch_size=1000 , shuffle=True) # Batch size 1 for easy attack example
+model        = DeepFCNet().to(device)
+optimizer    = optim.Adam(model.parameters(), lr=0.001)
+loss_fn      = nn.CrossEntropyLoss()
 
 print("Training model for 1 epoch...")
-model.train() # Set model to training mode
-for (data, target) in train_loader:
-    data, target = data.to(device), target.to(device)
+model.train()
+for (images, labels) in train_loader:
+    images = images.to(device)
+    labels = labels.to(device)
     optimizer.zero_grad()
-    output = model(data)
-    loss = loss_fn(output, target)
+    outputs = model(images)
+    loss    = loss_fn(outputs, labels)
     loss.backward()
     optimizer.step()
 print("Training complete.")
 
-# --- 4. Define the FGSM Attack ---
 
-def fgsm_attack(image, epsilon, data_grad):
-    # Get the sign of the gradients
-    sign_data_grad = data_grad.sign()
-    # Create the perturbed image
-    perturbed_image = image + epsilon * sign_data_grad
-    # Clamp the image to the valid range [0, 1]
-    perturbed_image = torch.clamp(perturbed_image, 0, 1)
-    return perturbed_image
+def fgsm_attack(images, epsilon, image_grads):
+    sign_image_grads = image_grads.sign()
+    perturbed_images = images + epsilon * sign_image_grads
+    perturbed_images = torch.clamp(perturbed_images, 0, 1) # valid range [0, 1]
+    return perturbed_images
 
-# --- 5. Test Model Against the Attack ---
 
 def test_attack(model, device, test_loader, epsilon):
     
-    model.eval() # Set model to evaluation mode
-    correct = 0
+    model.eval() 
+    n_correct = 0
     adv_examples = []
 
-    # Loop over all examples in test set
-    for data, target in test_loader:
-        data, target = data.to(device), target.to(device)
-        
-        # We need to compute gradients with respect to the input data
-        data.requires_grad = True
-
-        # Forward pass
-        output = model(data)
-        init_pred = output.max(1, keepdim=True)[1] # Get the index of the max log-probability
-
-        # If the initial prediction is wrong, don't bother attacking
-        if init_pred.item() != target.item():
-            continue
-
-        # Calculate the loss
-        loss = loss_fn(output, target)
-
-        # Zero all existing gradients
+    for images, labels in test_loader:
+        # compute gradients for FGSM attacks on input images
+        images = images.to(device)
+        labels = labels.to(device)
+        images.requires_grad = True
+        outputs = model(images)
+        loss    = loss_fn(outputs, labels)
         model.zero_grad()
-
-        # Calculate gradients of model in backward pass
         loss.backward()
+        images_grads        = images.grad.data
+        _, init_predictions = torch.max(outputs.data, 1)
 
-        # Get the gradients of the data
-        data_grad = data.grad.data
+        # apply and evaluate FGSM attacks
+        perturbed_data      = fgsm_attack(images, epsilon, images_grads)
+        output_adv          = model(perturbed_data)
+        _, final_predictions = torch.max(output_adv.data, 1)
 
-        # Call FGSM Attack
-        perturbed_data = fgsm_attack(data, epsilon, data_grad)
+        n_correct += (final_predictions == labels).sum().item()
+        for index in range(len(final_predictions)):
+            init_pred_item  = init_predictions[index].item()
+            final_pred_item = final_predictions[index].item()
+            label_item      = labels[index].item()
 
-        # Re-classify the perturbed image
-        output_adv = model(perturbed_data)
-        final_pred = output_adv.max(1, keepdim=True)[1] # Get the index of the max log-probability
+            was_match   = ( init_pred_item == label_item)
+            is_mismatch = (final_pred_item != label_item)
+            
+            if (was_match and is_mismatch and (len(adv_examples) < 5)):
 
-        if final_pred.item() == target.item():
-            correct += 1
-        else:
-            # Save some successful adversarial examples
-            if len(adv_examples) < 5:
-                adv_ex = perturbed_data.squeeze().detach().cpu().numpy()
-                orig_ex = data.squeeze().detach().cpu().numpy()
-                adv_examples.append((init_pred.item(), final_pred.item(), orig_ex, adv_ex))
+                adv_ex          = perturbed_data[index].squeeze().detach().cpu().numpy()
+                orig_ex         = images[index].squeeze().detach().cpu().numpy()
+                adv_examples.append((init_pred_item, final_pred_item, orig_ex, adv_ex))
 
-    # Calculate final accuracy
-    final_acc = correct / float(len(test_loader))
-    print(f"Epsilon: {epsilon}\tTest Accuracy = {correct} / {len(test_loader)} = {final_acc:.4f}")
+    final_acc = n_correct / float(len(test_loader))
+    print(f"Epsilon: {epsilon}\tTest Accuracy = {n_correct} / {len(test_loader)} = {final_acc:.4f}")
 
     return final_acc, adv_examples
 
 # --- 6. Run the Attack ---
-
-epsilons = [0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
-accuracies = []
+# epsilons     = [0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
+epsilons     = [0, 0.05, 0.1, 0.15]
+accuracies   = []
 all_examples = []
 
 for eps in epsilons:
@@ -140,12 +109,14 @@ for eps in epsilons:
     all_examples.append(ex)
 
 
-# --- 7. Plot the Results ---
+my_path        = os.path.dirname(os.path.abspath(__file__))
+my_path_parent = os.path.dirname(my_path)
+my_file        = "/images/fgsm_example_attack.png"
+plot_path      = my_path_parent + my_file
 
-# Plotting code
+# plotting examples of adversarial attacks
 plt.figure(figsize=(10, 8))
 
-# Get examples for epsilon = 0.15
 try:
     examples_to_show = all_examples[3] # Index 3 corresponds to epsilon = 0.15
     cnt = 0
@@ -171,7 +142,7 @@ try:
             break
             
     plt.tight_layout()
-    plt.show()
+    plt.savefig(plot_path, dpi=600)
 
 except IndexError:
     print("\nNot enough adversarial examples found to display for that epsilon.")

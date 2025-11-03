@@ -84,16 +84,16 @@ class BottleneckNet(nn.Module):
 
 class MNISTClassification:
     def __init__(self, learning_rate: float = 0.2, number_of_epochs: int = 25, batch_size: int = 64, display_training_updates = True) -> None:
-        self.batch_size       = batch_size
-        self.learning_rate    = learning_rate
-        self.number_of_epochs = number_of_epochs
+        self.batch_size               = batch_size
+        self.learning_rate            = learning_rate
+        self.number_of_epochs         = number_of_epochs
         self.display_training_updates = display_training_updates
         
         transform         = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]) 
         train_dataset     = torchvision.datasets.MNIST(root='./data', train=True, transform=transform, download=True)
         test_dataset      = torchvision.datasets.MNIST(root='./data', train=False, transform=transform)
         self.train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=self.batch_size, shuffle=True)
-        self.test_loader  = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=1000, shuffle=False, num_workers=4, pin_memory=True) # Speed up CPU to GPU transfer
+        self.test_loader  = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=2, shuffle=False, num_workers=4, pin_memory=True) # Speed up CPU to GPU transfer
 
         self.criterion = nn.CrossEntropyLoss()
         self.device    = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -107,8 +107,8 @@ class MNISTClassification:
             n_correct = 0
             n_samples = 0
             for images, labels in self.test_loader:
-                images = images.reshape(-1, 28 * 28).to(self.device)
-                labels = labels.to(self.device)
+                images  = images.reshape(-1, 28 * 28).to(self.device)
+                labels  = labels.to(self.device)
                 outputs = model(images)
                 _, predicted = torch.max(outputs.data, 1)
                 n_samples += labels.size(0)
