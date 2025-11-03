@@ -93,7 +93,7 @@ class MNISTClassification:
         train_dataset     = torchvision.datasets.MNIST(root='./data', train=True, transform=transform, download=True)
         test_dataset      = torchvision.datasets.MNIST(root='./data', train=False, transform=transform)
         self.train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=self.batch_size, shuffle=True)
-        self.test_loader  = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=2, shuffle=False, num_workers=4, pin_memory=True) # Speed up CPU to GPU transfer
+        self.test_loader  = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=1000, shuffle=False, num_workers=4, pin_memory=True) # Speed up CPU to GPU transfer
 
         self.criterion = nn.CrossEntropyLoss()
         self.device    = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -222,7 +222,6 @@ class MNISTClassification:
             plt.savefig("mnist_2d_projection.png", dpi=600)
             plt.close()
         
-
     def plot_error_and_entropy_vs_lambda1(self, ensemble_models, bin_edges=50):
         """
         Replicates the plot of classification error and predictive uncertainty (H)
@@ -239,7 +238,6 @@ class MNISTClassification:
         softmax = nn.Softmax(dim=1)
         epsilon = 1e-9 # for log stability
 
-        # self.test_loader.batch_size = 100 # Adjust batch size for more granular processing if needed
         samples_processed = 0
         with torch.no_grad():
             for images, labels in self.test_loader:
