@@ -7,6 +7,8 @@ import torchvision.transforms as transforms
 import matplotlib.pyplot as plt
 import statistics
 import numpy as np
+import os
+from enum import Enum
 
 class TanhSoftmaxNet(nn.Module):
     def __init__(self, input_size=784, hidden_layer_size=20, numb_hidden_layers=16, number_of_outputs=10):
@@ -64,6 +66,7 @@ class TanhSoftmaxNet(nn.Module):
 
         return output
 
+
 class BottleneckNet(nn.Module):
     def __init__(self, feature_extractor, number_of_outputs=10):
         super(BottleneckNet, self).__init__()
@@ -83,7 +86,7 @@ class BottleneckNet(nn.Module):
 
 
 class MNISTClassification:
-    def __init__(self, learning_rate: float = 0.2, number_of_epochs: int = 25, batch_size: int = 64, display_training_updates = True) -> None:
+    def __init__(self, learning_rate: float = 0.2, number_of_epochs: int = 5, batch_size: int = 64, display_training_updates = True) -> None:
         self.batch_size               = batch_size
         self.learning_rate            = learning_rate
         self.number_of_epochs         = number_of_epochs
@@ -345,18 +348,122 @@ class MNISTClassification:
         plt.savefig("error_entropy_vs_lambda1.png", dpi=300)
         plt.close()
         print("Plot saved as error_entropy_vs_lambda1.png")
+    
+    def fgsm_attack(self, images, attack_size, image_grads):
+        sign_image_grads = image_grads.sign()
+        perturbed_images = images + attack_size * sign_image_grads
+        perturbed_images = torch.clamp(perturbed_images, 0, 1) # valid range [0, 1]
+        return perturbed_images
+
+    def test_attack(self, model, attack_size):
+        n_correct    = 0
+        adv_examples = []
+        model.eval() 
+
+        for images, labels in self.test_loader:
+            # compute gradients for Fast Gradient Sign Method (FGSM) attacks on input images
+            images     = images.reshape(-1, 28 * 28).to(self.device)
+            labels     = labels.to(self.device)
+            images.requires_grad = True
+            outputs = model(images)
+            loss    = self.criterion(outputs, labels)
+            model.zero_grad()
+            loss.backward()
+            images_grads        = images.grad.data
+            _, init_predictions = torch.max(outputs.data, 1)
+
+            # apply and evaluate FGSM attacks
+            perturbed_data      = self.fgsm_attack(images, attack_size, images_grads)
+            output_adv          = model(perturbed_data)
+            _, final_predictions = torch.max(output_adv.data, 1)
+
+            n_correct += (final_predictions == labels).sum().item()
+            for index in range(len(final_predictions)):
+                init_pred_item  = init_predictions[index].item()
+                final_pred_item = final_predictions[index].item()
+                label_item      = labels[index].item()
+
+                was_match   = ( init_pred_item == label_item)
+                is_mismatch = (final_pred_item != label_item)
+                
+                if (was_match and is_mismatch and (len(adv_examples) < 5)):
+                    image_ref     = images.reshape(-1, 28, 28).to(self.device)
+                    perturbed_ref = perturbed_data.reshape(-1, 28, 28).to(self.device)
+                    adv_ex        = perturbed_ref[index].squeeze().detach().cpu().numpy()
+                    orig_ex       = image_ref[index].squeeze().detach().cpu().numpy()
+                    adv_examples.append((init_pred_item, final_pred_item, orig_ex, adv_ex))
+
+        final_acc = n_correct / float(len(self.test_loader.dataset.data))
+        print(f"Epsilon: {attack_size}\tTest Accuracy = {n_correct} / {len(self.test_loader.dataset.data)} = {final_acc:.4f}")
+
+        return final_acc, adv_examples
+    
+    def analyze_attacks(self, model, attack_sizes):
+        accuracies   = []
+        all_examples = []
+
+        for attack_size in attack_sizes:
+            acc, ex = self.test_attack(model, attack_size)
+            accuracies.append(acc)
+            all_examples.append(ex)
 
 
+        my_path        = os.path.dirname(os.path.abspath(__file__))
+        my_path_parent = os.path.dirname(my_path)
+        my_file        = "/images/fgsm_example_attack.png"
+        plot_path      = my_path_parent + my_file
+
+        plt.figure(figsize=(10, 8))
+
+        try:
+            examples_to_show = all_examples[3]
+            cnt = 0
+            for i in range(len(examples_to_show)):
+                cnt += 1
+                orig_pred, adv_pred, orig_img, adv_img = examples_to_show[i]
+                
+                # Original Image
+                plt.subplot(2, 5, cnt)
+                plt.xticks([], [])
+                plt.yticks([], [])
+                plt.title(f"Original: {orig_pred}")
+                plt.imshow(orig_img, cmap="gray")
+                
+                # Adversarial Image
+                plt.subplot(2, 5, cnt + 5)
+                plt.xticks([], [])
+                plt.yticks([], [])
+                plt.title(f"Adversarial: {adv_pred}")
+                plt.imshow(adv_img, cmap="gray")
+                
+                if cnt == 5:
+                    break
+                    
+            plt.tight_layout()
+            plt.savefig(plot_path, dpi=600)
+
+        except IndexError:
+            print("\nNot enough adversarial examples found to display for that attack size.")
+            print("Try training the model for more epochs or increasing attack size.")
+
+
+class DesiredPlot(Enum):
+    FTLE_2D    = 1
+    ENTROPY    = 2
+    AVERAGE    = 3
+    ATTACK     = 4
+    STAT_TABLE = 5
 
 def main():
-    classifier                = MNISTClassification()
-    is_visualizing_ftle       = False # seperated out as 2d projection code is slow (10 minutes+) TODO: optimize later
-    is_plotting_error_entropy = True
-    num_models_averaged       = 5
-    hidden_layer_sizes_list   = range(10, 120, 5)
+    classifier              = MNISTClassification()
+    
+    # change as desired
+    num_models_averaged     = 5
+    hidden_layer_sizes_list = range(10, 120, 5)
+    attack_sizes            = [0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
+    desired_plot            =  DesiredPlot.ATTACK
 
-
-    if is_visualizing_ftle:
+    if desired_plot == DesiredPlot.FTLE_2D:
         original_model            = TanhSoftmaxNet().to(classifier.device)
         classifier.original_model = original_model
         trained_original_model    = classifier.train_model(original_model, title="Phase 1: Original Model Training")
@@ -371,7 +478,8 @@ def main():
         bottleneck_model            = BottleneckNet(feature_extractor).to(classifier.device)
         classifier.bottleneck_model = classifier.train_model(bottleneck_model, title="Phase 2: Bottleneck Fine-Tuning")
         classifier.visualize_ftle_on_data_points()
-    elif is_plotting_error_entropy:
+    
+    if desired_plot == DesiredPlot.ENTROPY:
         ensemble_models = []
         for num in range(num_models_averaged):
             print(f"\n--- Training Ensemble Model {num+1}/{num_models_averaged} ---")
@@ -380,7 +488,8 @@ def main():
             ensemble_models.append(trained_model)
         
         classifier.plot_error_and_entropy_vs_lambda1(ensemble_models)
-    else:
+
+    if desired_plot == DesiredPlot.AVERAGE:
         average_eig1_list                   = []
         standard_dev_eig1_list              = []
         # classifier.display_training_updates = False
@@ -415,5 +524,28 @@ def main():
         plt.tight_layout()
         plt.savefig("accuracy_vs_num.png", dpi=600)
 
-if __name__ == "__main__":
+    if desired_plot == DesiredPlot.ATTACK:
+        untrained_model = TanhSoftmaxNet().to(classifier.device)
+        trained_model   = classifier.train_model(untrained_model, title="Phase 1: Model Training")
+        classifier.analyze_attacks(trained_model, attack_sizes)
+
+    if desired_plot == DesiredPlot.STAT_TABLE:
+        average_eig1_size_i_list = []
+        std_eig1_size_i_list = []
+
+        for num in range(num_models_averaged):
+            untrained_model   = TanhSoftmaxNet(hidden_layer_size = hidden_layer_size).to(classifier.device)
+            trained_model     = classifier.train_model(untrained_model, title=f"Model {num+1}/{num_models_averaged} Training")
+            average_eig1, standard_dev_eig1 = classifier.per_model_ftle(trained_model)
+            
+            average_eig1_size_i_list.append(average_eig1)
+            std_eig1_size_i_list.append(standard_dev_eig1)
+
+        avg_avg_of_eig1     = sum(average_eig1_size_i_list) / num_models_averaged
+        avg_std_dev_of_eig1 = sum(std_eig1_size_i_list)     / num_models_averaged
+
+        print(f'The average of {num_models_averaged} runs was an an average of {avg_avg_of_eig1} with a standard deviation of {avg_std_dev_of_eig1} for mu1.')
+        print(f'The average of {num_models_averaged} runs was an an average of {avg_avg_of_eig1} with a standard deviation of {avg_std_dev_of_eig1} for the percent of pictures correctly classified.')
+
+if __name__ == "__main__":_
     main()
