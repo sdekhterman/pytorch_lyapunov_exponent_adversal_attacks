@@ -1,21 +1,19 @@
 ## Current Tasks
 1. Attack Integration
-    1.  change network in attack file
-    2.  make test branch
-    3.  add attack code to main
-    4.  clean up plot selection
-    5.  print avg and std of max lyap and percent correct
-    6.  same for next few lyap exp
-    7   plot mu_2 and mu_3 
-    8.  stack plots of mu_1, mu_2, and mu_3
-    9.  save stack to image folder 
-    10. print mu_1, mu_2, ..., mu_n and percent correct for different attack epsilons
-    11. percent differences
-    12. add diff attacks to the stacked plot
-    13. better plot saving for the other functions
-    14. better plot text sizing
-    15. remove magic number 
-    16. comment code function level
+    1.  add attack code to main
+    2.  clean up plot selection
+    3.  print avg and std of max lyap and percent correct
+    4.  same for next few lyap exp
+    5   plot mu_2 and mu_3 
+    6.  stack plots of mu_1, mu_2, and mu_3
+    7.  save stack to image folder 
+    8.  print mu_1, mu_2, ..., mu_n and percent correct for different attack epsilons
+    9.  percent differences
+    10. add diff attacks to the stacked plot
+    11. better plot saving for the other functions
+    12. better plot text sizing
+    13. remove magic number 
+    14. comment code function level
     
     
 
