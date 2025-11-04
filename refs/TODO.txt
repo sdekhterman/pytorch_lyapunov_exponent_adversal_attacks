@@ -8,7 +8,7 @@
     6.  print mu_1, mu_2, ..., mu_n and percent correct for different attack epsilons
     7.  percent differences
     8.  add diff attacks to the stacked plot
-    ------------------------------clean up--------------------------------------------
+    -----------------------------------clean up---------------------------------------
     9.  better plot saving for the other functions
     10. better plot text sizing
     11. remove magic number 
