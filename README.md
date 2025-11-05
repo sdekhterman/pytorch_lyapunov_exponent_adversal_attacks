@@ -19,7 +19,7 @@ and then copy the following into the same terminal
 ```
 pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu126
 ```
-This repositry used PyTorch to train the deep neural network. If you have conflicts when installing the version of pytorch listed consider visiting https://pytorch.org/get-started/locally/ to get a version appropriate for your machine/ container.
+If you have conflicts when installing the version of pytorch listed consider visiting https://pytorch.org/get-started/locally/ to get a version appropriate for your machine/ container.
 
 ## Run Code
 After installing the code,
