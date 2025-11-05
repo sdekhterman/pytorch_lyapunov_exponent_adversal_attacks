@@ -260,9 +260,8 @@ class MNISTClassification:
 
                 for model in ensemble_models:
                     model.eval()
-                    # lyap_exp = model.max_finite_time_lyapunov_exponents(images)
                     lyap_exp = model.max_n_finite_time_lyapunov_exponents(images)
-                    batch_lambdas.append(lyap_exp[:, 0].cpu().numpy())
+                    batch_lambdas.append(lyap_exp.cpu().numpy())
                     outputs = model(images)
                     probs   = softmax(outputs)
                     batch_ensemble_probs.append(probs)
@@ -283,40 +282,13 @@ class MNISTClassification:
                 is_error = (predicted != labels)
                 all_errors.extend((is_error).cpu().numpy())
 
-        all_lambdas   = np.array(all_lambdas)
         all_errors    = np.array(all_errors).astype(float) # convert bool to float for averaging
         all_entropies = np.array(all_entropies)
+        all_lambdas   = np.concatenate(all_lambdas)
+        
+        if num_lyap_exp == 1:     
+            all_lambdas = all_lambdas.reshape(-1, 1)
 
-
-
-        min_lambda  = np.min(all_lambdas)
-        max_lambda  = np.max(all_lambdas)
-        lambda_bins = np.linspace(min_lambda, max_lambda, bin_edges)
-
-        binned_lambda    = []
-        binned_errors    = []
-        binned_entropies = []
-
-        # Iterate through bins and calculate average error and entropy
-        for i in range(len(lambda_bins) - 1):
-            lower_bound = lambda_bins[i]
-            upper_bound = lambda_bins[i+1]
-            
-            if i == len(lambda_bins) - 2: # Include the max value in the last bin
-                bin_indices = np.where((all_lambdas >= lower_bound) & (all_lambdas <= upper_bound))
-            else:
-                bin_indices = np.where((all_lambdas >= lower_bound) & (all_lambdas < upper_bound))
-            
-            if len(bin_indices[0]) > 0:
-                avg_lambda_in_bin  = np.mean(  all_lambdas[bin_indices])
-                avg_error_in_bin   = np.mean(   all_errors[bin_indices]) * 100 # Convert to percentage
-                avg_entropy_in_bin = np.mean(all_entropies[bin_indices])
-
-                binned_lambda.append(avg_lambda_in_bin)
-                binned_errors.append(avg_error_in_bin)
-                binned_entropies.append(avg_entropy_in_bin)
-
-        # Plotting
         fig, axes = plt.subplots(num_lyap_exp, 1, figsize=(10, 4))
 
         # If only one subplot, axes is not iterable — make it a list
@@ -324,7 +296,38 @@ class MNISTClassification:
             axes = [axes]
 
         fig.suptitle('Classification Error and Predictive Uncertainty vs. $\lambda_i^{(L)}(\mathbf{x})$')
+
         for i, ax in enumerate(axes):
+            
+            all_lambdas = all_lambdas[:, i] 
+
+            min_lambda  = np.min(all_lambdas)
+            max_lambda  = np.max(all_lambdas)
+            lambda_bins = np.linspace(min_lambda, max_lambda, bin_edges)
+
+            binned_lambda    = []
+            binned_errors    = []
+            binned_entropies = []
+
+            # Iterate through bins and calculate average error and entropy
+            for i in range(len(lambda_bins) - 1):
+                lower_bound = lambda_bins[i]
+                upper_bound = lambda_bins[i+1]
+                
+                if i == len(lambda_bins) - 2: # Include the max value in the last bin
+                    bin_indices = np.where((all_lambdas >= lower_bound) & (all_lambdas <= upper_bound))
+                else:
+                    bin_indices = np.where((all_lambdas >= lower_bound) & (all_lambdas < upper_bound))
+                
+                if len(bin_indices[0]) > 0:
+                    avg_lambda_in_bin  = np.mean(  all_lambdas[bin_indices])
+                    avg_error_in_bin   = np.mean(   all_errors[bin_indices]) * 100 # Convert to percentage
+                    avg_entropy_in_bin = np.mean(all_entropies[bin_indices])
+
+                    binned_lambda.append(avg_lambda_in_bin)
+                    binned_errors.append(avg_error_in_bin)
+                    binned_entropies.append(avg_entropy_in_bin)
+
             color_error = 'black'
             ax.set_xlabel(r'$\lambda_1^{(L)}(\mathbf{x})$')
             ax.set_ylabel('Test error (%)', color=color_error)
@@ -346,6 +349,7 @@ class MNISTClassification:
         plt.savefig("error_entropy_vs_lambda.png", dpi=300)
         plt.close()
         print("Plot saved as error_entropy_vs_lambda.png")
+        
 
     def fgsm_attack(self, images, attack_size, image_grads):
         sign_image_grads = image_grads.sign()
