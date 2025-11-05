@@ -88,20 +88,21 @@ class BottleneckNet(nn.Module):
 
 
 class MNISTClassification:
-    def __init__(self, learning_rate: float = 0.2, number_of_epochs: int = 25, batch_size: int = 64, display_training_updates = True, debug = False) -> None:
-        self.batch_size               = batch_size
-        self.learning_rate            = learning_rate
+    def __init__(self, learning_rate: float = 5e-3, momentum: float = 0.9, number_of_epochs: int = 25, batch_size: int = 64, debug: bool = False) -> None:
+        self.learning_rate    = learning_rate
+        self.momentum         = momentum
         self.number_of_epochs = number_of_epochs
+        self.batch_size       = batch_size
+
         if debug:
-            self.number_of_epochs = 5
-        self.display_training_updates = display_training_updates
+            self.number_of_epochs = 2
         
         transform         = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]) 
         train_dataset     = torchvision.datasets.MNIST(root='./data', train=True, transform=transform, download=True)
         test_dataset      = torchvision.datasets.MNIST(root='./data', train=False, transform=transform)
         
         if debug:
-            subset_indices = range(500)
+            subset_indices = range(120)
             test_dataset = Subset(test_dataset, subset_indices)
 
         self.train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=self.batch_size, shuffle=True)
@@ -121,25 +122,19 @@ class MNISTClassification:
         self.mnist_2d_proj_plot_path   = my_path_parent + "/images/mnist_2d_projection.png"
         self.err_ent_vs_lmbd_plot_path = my_path_parent + "/images/error_entropy_vs_lambda.png"
 
-    def test_model(self, model):
-        model.eval()
-        with torch.no_grad():
-            n_correct = 0
-            n_samples = 0
-            for images, labels in self.test_loader:
-                images  = images.reshape(-1, 28 * 28).to(self.device)
-                labels  = labels.to(self.device)
-                outputs = model(images)
-                _, predicted = torch.max(outputs.data, 1)
-                n_samples += labels.size(0)
-                n_correct += (predicted == labels).sum().item()
+        # training_model config
+        self.reshape_size = (-1, 28 * 28)
+        self.epoch_loss_print_period = 5
 
-            acc = 100.0 * n_correct / n_samples
-            return acc
+        # lot_error_and_entropy_vs_lambda config
+        self.epsilon = 1e-9 # for log stability
+
+        # train_attack config
+        self.numb_adversaila_examples = 5
 
     def train_model(self, model, title="Training Phase"):
         print(f"--- Starting: {title} ---")
-        optimizer = optim.SGD(filter(lambda p: p.requires_grad, model.parameters()),lr=5e-3, momentum=0.9)
+        optimizer = optim.SGD(filter(lambda p: p.requires_grad, model.parameters()),lr=self.learning_rate, momentum=self.momentum)
         
         train_losses    = []
         test_accuracies = []
@@ -149,7 +144,7 @@ class MNISTClassification:
             model.train()
             running_loss = 0.0
             for images, labels in self.train_loader:
-                images = images.reshape(-1, 28 * 28).to(self.device)
+                images = images.reshape(self.reshape_size).to(self.device)
                 labels = labels.to(self.device)
                 
                 outputs = model(images)
@@ -163,15 +158,15 @@ class MNISTClassification:
             avg_loss = running_loss / n_total_steps
             train_losses.append(avg_loss)
 
-            model_accuracy_percent = self.test_model(model)
+            _,_, model_accuracy_percent = self.test_model(model)
             test_accuracies.append(model_accuracy_percent)
 
-            if (((epoch + 1) % 5 == 0) and self.display_training_updates):
+            if (((epoch + 1) % self.epoch_loss_print_period == 0)):
                 print(f'Epoch [{epoch+1}/{self.number_of_epochs}], Loss: {avg_loss:.4f}, Accuracy: {model_accuracy_percent:.2f} %')
         
         return model
 
-    def per_model_stats(self, model, num_lyap_exp = 1):
+    def test_model(self, model, num_lyap_exp = 1):
         model.eval()
         n_correct  = 0
         n_samples  = 0
@@ -179,7 +174,7 @@ class MNISTClassification:
         
         with torch.no_grad():
             for images, labels in self.test_loader:
-                images      = images.reshape(-1, 28 * 28).to(self.device)
+                images      = images.reshape(self.reshape_size).to(self.device)
                 lyaps_batch = model.max_n_finite_time_lyapunov_exponents(images, num_lyap_exp)
                 lyaps_list.append(lyaps_batch)
                 
@@ -214,7 +209,7 @@ class MNISTClassification:
             # disabling gradient speeds things up
             with torch.no_grad():
                 for images, _ in self.test_loader:
-                    images = images.reshape(-1, 28 * 28).to(self.device)
+                    images = images.reshape(self.reshape_size).to(self.device)
                     lyaps_batch      = self.original_model.max_n_finite_time_lyapunov_exponents(images)
                     features_batch   = self.bottleneck_model.feature_extractor(images)
                     bottleneck_batch = self.bottleneck_model.bottleneck[0](features_batch)
@@ -233,7 +228,7 @@ class MNISTClassification:
 
                 scatter = plt.scatter(all_points_gpu[:, 0], all_points_gpu[:, 1], c=all_max_lyaps_gpu, cmap='coolwarm', alpha=0.8, s=15)
 
-                cbar = plt.colorbar(scatter, label="Max FTLE ($\log_{10}$ scale)")
+                plt.colorbar(scatter, label="Max FTLE ($\log_{10}$ scale)")
                 plt.title('Bottleneck Activations Colored by FTLE Value')
                 plt.xlabel('Neuron 1 Activation')
                 plt.ylabel('Neuron 2 Activation')
@@ -253,12 +248,12 @@ class MNISTClassification:
         all_errors    = []
         all_entropies = []
         softmax       = nn.Softmax(dim=1)
-        epsilon       = 1e-9 # for log stability
+        
 
         samples_processed = 0
         with torch.no_grad():
             for images, labels in self.test_loader:
-                images = images.reshape(-1, 28 * 28).to(self.device)
+                images = images.reshape(self.reshape_size).to(self.device)
                 labels = labels.to(self.device)
 
                 batch_lambdas        = []
@@ -280,7 +275,7 @@ class MNISTClassification:
                 all_lambdas.extend(avg_batch_lambda)
                 ensemble_probs_for_batch =  torch.stack(batch_ensemble_probs)
                 avg_probs_per_image      =  torch.mean(ensemble_probs_for_batch, dim=0) 
-                entropies_per_image      = -torch.sum(avg_probs_per_image * torch.log(avg_probs_per_image + epsilon), dim=1)
+                entropies_per_image      = -torch.sum(avg_probs_per_image * torch.log(avg_probs_per_image + self.epsilon), dim=1)
                 all_entropies.extend(entropies_per_image.cpu().numpy())
 
                 # compute model ensemble errors rates
@@ -343,23 +338,59 @@ class MNISTClassification:
 
                 ax2 = ax.twinx()  # instantiate a second axes that shares the same x-axis
                 color_entropy = 'green'
-                ax2.set_ylabel(r'$H$', color=color_entropy)  # we already handled the x-label with ax1
+                ax2.set_ylabel(r'$H$', color=color_entropy)
                 ax2.plot(binned_lambda, binned_entropies, color=color_entropy, label='H')
                 ax2.tick_params(axis='y', labelcolor=color_entropy)
                 ax2.set_ylim(bottom=0) # Entropy should not go below 0
 
-                # Add grid and title for better readability
                 ax.grid(True, linestyle='--', alpha=0.6)
 
             plt.savefig(self.err_ent_vs_lmbd_plot_path, dpi=600)
             plt.close()
         print("Plot saved. :)")
         
-    def fgsm_attack(self, images, attack_size, image_grads):
-        sign_image_grads = image_grads.sign()
-        perturbed_images = images + attack_size * sign_image_grads
-        perturbed_images = torch.clamp(perturbed_images, 0, 1) # valid range [0, 1]
-        return perturbed_images
+    def analyze_attacks(self, model, attack_sizes):
+        accuracies   = []
+        all_examples = []
+
+        for attack_size in attack_sizes:
+            acc, ex = self.test_attack(model, attack_size)
+            accuracies.append(acc)
+            all_examples.append(ex)
+        with plt.style.context(["science"]):
+            plt.figure(figsize=(10, 8))
+
+            try:
+                examples_to_show = all_examples[3] #TODO have this update based on the list size
+                cnt = 0
+                for i in range(len(examples_to_show)):
+                    cnt += 1
+                    orig_pred, adv_pred, orig_img, adv_img = examples_to_show[i]
+                    
+                    # original image
+                    plt.subplot(2, self.numb_adversaila_examples, cnt)
+                    plt.xticks([], [])
+                    plt.yticks([], [])
+                    plt.title(f"Original: {orig_pred}")
+                    plt.imshow(orig_img, cmap="gray")
+                    
+                    # adversarial images
+                    plt.subplot(2, self.numb_adversaila_examples, cnt + self.numb_adversaila_examples)
+                    plt.xticks([], [])
+                    plt.yticks([], [])
+                    plt.title(f"Adversarial: {adv_pred}")
+                    plt.imshow(adv_img, cmap="gray")
+                    
+                    if cnt == self.numb_adversaila_examples:
+                        break
+                        
+                plt.savefig(self.attack_plot_path, dpi=600)
+                plt.close()
+                print("Plot saved. :)")
+
+            except IndexError:
+                print("\nNot enough adversarial examples found to display for that attack size.")
+                print("Try training the model for more epochs or increasing attack size.")
 
     def test_attack(self, model, attack_size):
         n_correct    = 0
@@ -368,7 +399,7 @@ class MNISTClassification:
 
         for images, labels in self.test_loader:
             # compute gradients for Fast Gradient Sign Method (FGSM) attacks on input images
-            images     = images.reshape(-1, 28 * 28).to(self.device)
+            images     = images.reshape(self.reshape_size).to(self.device)
             labels     = labels.to(self.device)
             images.requires_grad = True
             outputs = model(images)
@@ -392,9 +423,9 @@ class MNISTClassification:
                 was_match   = ( init_pred_item == label_item)
                 is_mismatch = (final_pred_item != label_item)
                 
-                if (was_match and is_mismatch and (len(adv_examples) < 5)):
-                    image_ref     = images.reshape(-1, 28, 28).to(self.device)
-                    perturbed_ref = perturbed_data.reshape(-1, 28, 28).to(self.device)
+                if (was_match and is_mismatch and (len(adv_examples) < self.numb_adversaila_examples)):
+                    image_ref     = images.reshape(self.reshape_size).to(self.device)
+                    perturbed_ref = perturbed_data.reshape(self.reshape_size).to(self.device)
                     adv_ex        = perturbed_ref[index].squeeze().detach().cpu().numpy()
                     orig_ex       = image_ref[index].squeeze().detach().cpu().numpy()
                     adv_examples.append((init_pred_item, final_pred_item, orig_ex, adv_ex))
@@ -404,48 +435,11 @@ class MNISTClassification:
 
         return final_acc, adv_examples
     
-    def analyze_attacks(self, model, attack_sizes):
-        accuracies   = []
-        all_examples = []
-
-        for attack_size in attack_sizes:
-            acc, ex = self.test_attack(model, attack_size)
-            accuracies.append(acc)
-            all_examples.append(ex)
-        with plt.style.context(["science"]):
-            plt.figure(figsize=(10, 8))
-
-            try:
-                examples_to_show = all_examples[3]
-                cnt = 0
-                for i in range(len(examples_to_show)):
-                    cnt += 1
-                    orig_pred, adv_pred, orig_img, adv_img = examples_to_show[i]
-                    
-                    # Original Image
-                    plt.subplot(2, 5, cnt)
-                    plt.xticks([], [])
-                    plt.yticks([], [])
-                    plt.title(f"Original: {orig_pred}")
-                    plt.imshow(orig_img, cmap="gray")
-                    
-                    # Adversarial Image
-                    plt.subplot(2, 5, cnt + 5)
-                    plt.xticks([], [])
-                    plt.yticks([], [])
-                    plt.title(f"Adversarial: {adv_pred}")
-                    plt.imshow(adv_img, cmap="gray")
-                    
-                    if cnt == 5:
-                        break
-                        
-                plt.savefig(self.attack_plot_path, dpi=600)
-                plt.close()
-                print("Plot saved. :)")
-
-            except IndexError:
-                print("\nNot enough adversarial examples found to display for that attack size.")
-                print("Try training the model for more epochs or increasing attack size.")
+    def fgsm_attack(self, images, attack_size, image_grads):
+        sign_image_grads = image_grads.sign()
+        perturbed_images = images + attack_size * sign_image_grads
+        perturbed_images = torch.clamp(perturbed_images, 0, 1) # valid range [0, 1]
+        return perturbed_images
 
 
 class DesiredPlot(Enum):
@@ -459,7 +453,7 @@ def main():
     classifier = MNISTClassification(debug=True) # set debug flag to True if you want code to run in 1x minutes instead of 10x minutes
     
     # change as desired
-    num_models_averaged     = 5
+    num_models_averaged     = 2
     hidden_layer_sizes_list = range(10, 120, 20)
     attack_sizes            = [0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
     num_lyap_exp            = 3
@@ -499,12 +493,12 @@ def main():
         for hidden_layer_size in hidden_layer_sizes_list:
             print(f"\n--- Training and Testing with {hidden_layer_size} Nodes Per Layer Hidden---")
             average_eig1_size_i_list = []
-            std_eig1_size_i_list = []
+            std_eig1_size_i_list     = []
 
             for num in range(num_models_averaged):
                 untrained_model   = TanhSoftmaxNet(hidden_layer_size = hidden_layer_size).to(classifier.device)
                 trained_model     = classifier.train_model(untrained_model, title=f"Model {num+1}/{num_models_averaged} Training")
-                average_eig1, standard_dev_eig1, _ = classifier.per_model_stats(trained_model)
+                average_eig1, standard_dev_eig1, _ = classifier.test_model(trained_model)
                 
                 average_eig1_size_i_list.append(average_eig1.item())
                 std_eig1_size_i_list.append(standard_dev_eig1.item())
@@ -542,7 +536,7 @@ def main():
         for num in range(num_models_averaged):
             untrained_model   = TanhSoftmaxNet().to(classifier.device)
             trained_model     = classifier.train_model(untrained_model, title=f"Model {num+1}/{num_models_averaged} Training")
-            average_eig, standard_dev_eig, accuracy = classifier.per_model_stats(trained_model, num_lyap_exp)
+            average_eig, standard_dev_eig, accuracy = classifier.test_model(trained_model, num_lyap_exp)
             
             average_eig_list.append(average_eig)
             std_eig_list.append(standard_dev_eig)

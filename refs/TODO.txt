@@ -1,18 +1,18 @@
 ## Current Tasks
 1. Attack Integration
     -----------------------------------clean up---------------------------------------
-    1. have test_model and per_model_stats be the same function with specifiers 
-    2. update readme and requirments.txtso code first time runable
-    2. remove magic number
-    3. comment code function level
+    1. comment code function level
+    2. update readme and requirments.txt so code first time runable
     --------------------------------core deliverable-----------------------------------
     1. compute the correlation
-    --------------------------------------bonus----------------------------------------
-    1. print mu_1, mu_2, ..., mu_n and percent correct for different attack epsilons
-    2. percent differences
-    3. add diff attacks to the stacked plot
-    
-    
+    2. print mu_1, mu_2, ..., mu_n and percent correct for different attack epsilons
+    3. percent differences
+    4. add diff attacks to the stacked plot
+
+2. Post Report Submission
+    1. make mean and std compution more consistant
+    2. see if some of the code be repeated less   
+    3. have analyze_attack index middle list of attack sizes
     
 
 ## Past Tasks
