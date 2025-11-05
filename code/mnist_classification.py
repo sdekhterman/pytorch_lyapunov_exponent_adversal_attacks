@@ -193,7 +193,7 @@ class MNISTClassification:
         test_dataset      = torchvision.datasets.MNIST(root='./data', train=False, transform=transform)
         
         if debug:
-            subset_indices = range(120)
+            subset_indices = range(100)
             test_dataset = Subset(test_dataset, subset_indices)
 
         self.train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=self.batch_size, shuffle=True)
@@ -219,6 +219,7 @@ class MNISTClassification:
 
         # lot_error_and_entropy_vs_lambda config
         self.epsilon = 1e-9 # for log stability
+        self.correlation_list = []
 
         # train_attack config
         self.numb_adversaila_examples = 5
@@ -488,9 +489,19 @@ class MNISTClassification:
 
                 ax.grid(True, linestyle='--', alpha=0.6)
 
+                binned_lambda_array = np.array(binned_lambda)
+                binned_errors_array = np.array(binned_errors)
+                correlation_arg     = np.vstack([binned_lambda_array, binned_errors_array])
+                correlation_array   = np.corrcoef(correlation_arg)
+                self.correlation_list.append(correlation_array[1,1])
+
+                print(stop)
+
+
             plt.savefig(self.err_ent_vs_lmbd_plot_path, dpi=600)
             plt.close()
         print("Plot saved. :)")
+        print(self.correlation_list)
         
     def analyze_attacks(self, model, attack_sizes):
         """
@@ -635,7 +646,7 @@ def main():
     hidden_layer_sizes_list = range(10, 120, 20)
     attack_sizes            = [0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
     num_lyap_exp            = 3
-    desired_plot            =  DesiredPlot.STAT_TABLE #Prof Rainer Engelken try each of the options for this
+    desired_plot            =  DesiredPlot.ENTROPY #Prof Rainer Engelken try each of the options for this
     
 
     if desired_plot == DesiredPlot.FTLE_2D:
