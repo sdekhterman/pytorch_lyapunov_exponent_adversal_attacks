@@ -1,13 +1,13 @@
 ## Current Tasks
 1. Attack Integration
-    -----------------------------------clean up---------------------------------------
-    1. test code first time runable on Linux
-    2. test code first time runable on Windows (circle back to before deadline)
     --------------------------------core deliverable-----------------------------------
-    1. compute the correlation
+    1. compute the correlation (without attack)
     2. print mu_1, mu_2, ..., mu_n and percent correct for different attack epsilons
     3. percent differences
     4. add diff attacks to the stacked plot
+    5. compute the correlation (with attack)
+    -----------------------------------clean up---------------------------------------
+    1. test code first time runable on Windows (circle back to before deadline)
 
 2. Post Report Submission
     1. make mean and std compution more consistant
