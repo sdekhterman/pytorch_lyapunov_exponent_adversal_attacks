@@ -1,20 +1,19 @@
 ## Current Tasks
 1. Attack Integration
-    1.  print avg and std of max lyap and percent correct
-    2.  same for next few lyap exp
-    3   plot mu_2 and mu_3 
-    4.  stack plots of mu_1, mu_2, and mu_3
-    5.  save stack to image folder 
-    6.  print mu_1, mu_2, ..., mu_n and percent correct for different attack epsilons
-    7.  percent differences
-    8.  add diff attacks to the stacked plot
+    1  plot mu_2 and mu_3 
+    2. stack plots of mu_1, mu_2, and mu_3
+    3. save stack to image folder
+    4. compute the correlation
+    5. print mu_1, mu_2, ..., mu_n and percent correct for different attack epsilons
+    6. percent differences
+    7. add diff attacks to the stacked plot
     -----------------------------------clean up---------------------------------------
-    9.  better plot saving for the other functions
-    10. better plot text sizing
-    11. remove magic number 
-    12. comment code function level
+    8.  better plot saving for the other functions
+    9. better plot text sizing
+    10. remove magic number 
+    11. comment code function level
     
-    
+    have test_model and per_model_stats be the same function with specifiers
 
 ## Past Tasks
 1.  Read Project List

@@ -9,6 +9,7 @@ import statistics
 import numpy as np
 import os
 from enum import Enum
+from torch.utils.data import Subset
 
 class TanhSoftmaxNet(nn.Module):
     def __init__(self, input_size=784, hidden_layer_size=20, numb_hidden_layers=16, number_of_outputs=10):
@@ -34,7 +35,7 @@ class TanhSoftmaxNet(nn.Module):
     def forward(self, x):
         return self.network(x)
     
-    def max_finite_time_lyapunov_exponents(self, x: torch.Tensor) -> list[torch.Tensor]:
+    def max_n_finite_time_lyapunov_exponents(self, x: torch.Tensor, num_lyap_exp: int = 1) -> list[torch.Tensor]:
         if x.dim() == 1:
             x = x.unsqueeze(0)
 
@@ -57,7 +58,7 @@ class TanhSoftmaxNet(nn.Module):
         
         cauchy_green_tensor = torch.transpose(jacobian, 1, 2) @ jacobian
         singular_values = torch.linalg.svdvals(cauchy_green_tensor)
-        max_singular_values = singular_values[:, 0]
+        max_singular_values = singular_values[:, 0:num_lyap_exp]
         max_lyapunov_exponents = torch.log10(max_singular_values)
         
         number_of_hidden_layers_tensor = torch.tensor(self.numb_hidden_layers, dtype=torch.float64, device=max_lyapunov_exponents.device)
@@ -86,7 +87,7 @@ class BottleneckNet(nn.Module):
 
 
 class MNISTClassification:
-    def __init__(self, learning_rate: float = 0.2, number_of_epochs: int = 5, batch_size: int = 64, display_training_updates = True) -> None:
+    def __init__(self, learning_rate: float = 0.2, number_of_epochs: int = 1, batch_size: int = 64, display_training_updates = True) -> None:
         self.batch_size               = batch_size
         self.learning_rate            = learning_rate
         self.number_of_epochs         = number_of_epochs
@@ -95,8 +96,12 @@ class MNISTClassification:
         transform         = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]) 
         train_dataset     = torchvision.datasets.MNIST(root='./data', train=True, transform=transform, download=True)
         test_dataset      = torchvision.datasets.MNIST(root='./data', train=False, transform=transform)
+        
+        subset_indices = range(200)
+        test_subset = Subset(test_dataset, subset_indices)
+        
         self.train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=self.batch_size, shuffle=True)
-        self.test_loader  = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=1000, shuffle=False, num_workers=4, pin_memory=True) # Speed up CPU to GPU transfer
+        self.test_loader  = torch.utils.data.DataLoader(dataset=test_subset, batch_size=1000, shuffle=False, num_workers=4, pin_memory=True) # Speed up CPU to GPU transfer
 
         self.criterion = nn.CrossEntropyLoss()
         self.device    = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -154,25 +159,32 @@ class MNISTClassification:
         
         return model
 
-    def per_model_ftle(self, model):
+    def per_model_stats(self, model, num_lyap_exp = 1):
         model.eval()
+        n_correct  = 0
+        n_samples  = 0
         lyaps_list = []
-        samples_processed = 0
+        
         with torch.no_grad():
-            for images, _ in self.test_loader:
-                images = images.reshape(-1, 28 * 28).to(self.device)
-                lyaps_batch = model.max_finite_time_lyapunov_exponents(images)
+            for images, labels in self.test_loader:
+                images      = images.reshape(-1, 28 * 28).to(self.device)
+                lyaps_batch = model.max_n_finite_time_lyapunov_exponents(images, num_lyap_exp)
                 lyaps_list.append(lyaps_batch)
+                
+                labels  = labels.to(self.device)
+                outputs = model(images)
+                _, predicted = torch.max(outputs.data, 1)
+                n_correct += (predicted == labels).sum().item()
+                n_samples += labels.size(0)
 
-                samples_processed += images.size(0)
-                print(f"Total samples processed: {samples_processed}")
+                print(f"Total samples processed: {n_samples}")
 
-        all_lyaps_gpu = torch.cat(lyaps_list, dim=0).cpu().numpy()
-        average_lyap  = sum(all_lyaps_gpu) / len(all_lyaps_gpu)
-        stddev_lyap   = statistics.stdev(all_lyaps_gpu.tolist())
+        all_lyaps_gpu = torch.cat(lyaps_list, dim=0)
+        average_lyap  = torch.mean(all_lyaps_gpu, dim=0)
+        stddev_lyap   = torch.std(all_lyaps_gpu, dim=0)
+        accuracy      = 100.0 * n_correct / n_samples
 
-
-        return average_lyap, stddev_lyap
+        return average_lyap, stddev_lyap, accuracy
 
     def visualize_ftle_on_data_points(self):
             print("\n--- Visualizing FTLE Value for Each Data Point ---")
@@ -191,7 +203,7 @@ class MNISTClassification:
             with torch.no_grad():
                 for images, _ in self.test_loader:
                     images = images.reshape(-1, 28 * 28).to(self.device)
-                    lyaps_batch      = self.original_model.max_finite_time_lyapunov_exponents(images)
+                    lyaps_batch      = self.original_model.max_n_finite_time_lyapunov_exponents(images)
                     features_batch   = self.bottleneck_model.feature_extractor(images)
                     bottleneck_batch = self.bottleneck_model.bottleneck[0](features_batch)
                     
@@ -225,21 +237,17 @@ class MNISTClassification:
             plt.savefig("mnist_2d_projection.png", dpi=600)
             plt.close()
         
-    def plot_error_and_entropy_vs_lambda1(self, ensemble_models, bin_edges=50):
-        """
-        Replicates the plot of classification error and predictive uncertainty (H)
-        as functions of lambda_1 (max Lyapunov exponent).
-        """
+    def plot_error_and_entropy_vs_lambda(self, ensemble_models, num_lyap_exp = 2, bin_edges=50):
         print("\n--- Generating Error and Entropy vs. Lambda_1 Plot ---")
         if not ensemble_models:
             print("No models provided for ensemble. Cannot generate plot.")
             return
 
-        all_lambda1s = []
-        all_errors = []
+        all_lambdas   = []
+        all_errors    = []
         all_entropies = []
-        softmax = nn.Softmax(dim=1)
-        epsilon = 1e-9 # for log stability
+        softmax       = nn.Softmax(dim=1)
+        epsilon       = 1e-9 # for log stability
 
         samples_processed = 0
         with torch.no_grad():
@@ -247,59 +255,45 @@ class MNISTClassification:
                 images = images.reshape(-1, 28 * 28).to(self.device)
                 labels = labels.to(self.device)
 
-                batch_lambda1s = []
-                batch_ensemble_probs = [] # To store probabilities for each image across ensemble
+                batch_lambdas        = []
+                batch_ensemble_probs = []
 
                 for model in ensemble_models:
                     model.eval()
-                    # Calculate lambda_1 for each image
-                    lyap_exp = model.max_finite_time_lyapunov_exponents(images)
-                    batch_lambda1s.append(lyap_exp.cpu().numpy())
-
-                    # Get softmax probabilities for each image from this model
+                    # lyap_exp = model.max_finite_time_lyapunov_exponents(images)
+                    lyap_exp = model.max_n_finite_time_lyapunov_exponents(images)
+                    batch_lambdas.append(lyap_exp[:, 0].cpu().numpy())
                     outputs = model(images)
-                    probs = softmax(outputs)
+                    probs   = softmax(outputs)
                     batch_ensemble_probs.append(probs)
 
                     samples_processed += images.size(0)
                     print(f"Total samples processed: {samples_processed}")
-                
-                # Average lambda_1 across the ensemble for each image (if multiple lambda_1s per image were computed)
-                # For this problem, max_finite_time_lyapunov_exponents returns one value per image.
-                # So we just take the first model's lambda_1 for now, or average if desired.
-                # The paper implies one lambda_1 per input x. So we use the first model's.
-                avg_batch_lambda1 = np.mean(np.array(batch_lambda1s), axis=0) # average across models for stability, or just use one
-                all_lambda1s.extend(avg_batch_lambda1)
 
-                # For each image, average probabilities across the ensemble
-                # stack -> [num_models, batch_size, num_classes]
-                ensemble_probs_for_batch = torch.stack(batch_ensemble_probs)
-                # average -> [batch_size, num_classes]
-                avg_probs_per_image = torch.mean(ensemble_probs_for_batch, dim=0) 
-                
-                # Calculate entropy H for each image based on its averaged probabilities
-                entropies_per_image = -torch.sum(avg_probs_per_image * torch.log(avg_probs_per_image + epsilon), dim=1)
+                # compute the mean lyapunov exponenet(s) and entropy across the ensamle of models, per image
+                avg_batch_lambda = np.mean(np.array(batch_lambdas), axis=0)
+                all_lambdas.extend(avg_batch_lambda)
+                ensemble_probs_for_batch =  torch.stack(batch_ensemble_probs)
+                avg_probs_per_image      =  torch.mean(ensemble_probs_for_batch, dim=0) 
+                entropies_per_image      = -torch.sum(avg_probs_per_image * torch.log(avg_probs_per_image + epsilon), dim=1)
                 all_entropies.extend(entropies_per_image.cpu().numpy())
 
-                # Determine error for each image using the prediction from the first model (or the ensemble majority vote)
-                # For error, we usually check against a single model's prediction or a majority vote.
-                # Let's use the first model's prediction for simplicity for error calculation per image.
-                first_model_outputs = ensemble_models[0](images)
-                _, predicted = torch.max(first_model_outputs.data, 1)
-                is_correct = (predicted == labels)
-                all_errors.extend((~is_correct).cpu().numpy()) # True for error, False for correct
+                # compute model ensemble errors rates
+                _, predicted = torch.max(avg_probs_per_image, 1)
+                is_error = (predicted != labels)
+                all_errors.extend((is_error).cpu().numpy())
 
-        # Convert to numpy arrays for easier manipulation
-        all_lambda1s = np.array(all_lambda1s)
-        all_errors = np.array(all_errors).astype(float) # convert bool to float for averaging
+        all_lambdas   = np.array(all_lambdas)
+        all_errors    = np.array(all_errors).astype(float) # convert bool to float for averaging
         all_entropies = np.array(all_entropies)
 
-        # Bin the data by lambda_1 values
-        min_lambda1 = np.min(all_lambda1s)
-        max_lambda1 = np.max(all_lambda1s)
-        lambda_bins = np.linspace(min_lambda1, max_lambda1, bin_edges)
 
-        binned_lambda1   = []
+
+        min_lambda  = np.min(all_lambdas)
+        max_lambda  = np.max(all_lambdas)
+        lambda_bins = np.linspace(min_lambda, max_lambda, bin_edges)
+
+        binned_lambda    = []
         binned_errors    = []
         binned_entropies = []
 
@@ -308,47 +302,46 @@ class MNISTClassification:
             lower_bound = lambda_bins[i]
             upper_bound = lambda_bins[i+1]
             
-            # Find indices of samples falling into the current bin
             if i == len(lambda_bins) - 2: # Include the max value in the last bin
-                bin_indices = np.where((all_lambda1s >= lower_bound) & (all_lambda1s <= upper_bound))
+                bin_indices = np.where((all_lambdas >= lower_bound) & (all_lambdas <= upper_bound))
             else:
-                bin_indices = np.where((all_lambda1s >= lower_bound) & (all_lambda1s < upper_bound))
+                bin_indices = np.where((all_lambdas >= lower_bound) & (all_lambdas < upper_bound))
             
             if len(bin_indices[0]) > 0:
-                avg_lambda1_in_bin = np.mean(all_lambda1s[bin_indices])
-                avg_error_in_bin   = np.mean(all_errors[bin_indices]) * 100 # Convert to percentage
+                avg_lambda_in_bin  = np.mean(  all_lambdas[bin_indices])
+                avg_error_in_bin   = np.mean(   all_errors[bin_indices]) * 100 # Convert to percentage
                 avg_entropy_in_bin = np.mean(all_entropies[bin_indices])
 
-                binned_lambda1.append(avg_lambda1_in_bin)
+                binned_lambda.append(avg_lambda_in_bin)
                 binned_errors.append(avg_error_in_bin)
                 binned_entropies.append(avg_entropy_in_bin)
 
         # Plotting
-        fig, ax1 = plt.subplots(figsize=(10, 4))
+        fig, axes = plt.subplots(num_lyap_exp, 1, figsize=(10, 4))
+        fig.suptitle('Classification Error and Predictive Uncertainty vs. $\lambda_i^{(L)}(\mathbf{x})$')
+        for i, ax in enumerate(axes):
+            color_error = 'black'
+            ax.set_xlabel(r'$\lambda_1^{(L)}(\mathbf{x})$')
+            ax.set_ylabel('Test error (%)', color=color_error)
+            ax.plot(binned_lambda, binned_errors, color=color_error, label='Test error (%)')
+            ax.tick_params(axis='y', labelcolor=color_error)
+            ax.set_ylim(bottom=0) # Error should not go below 0
 
-        color_error = 'black'
-        ax1.set_xlabel(r'$\lambda_1^{(L)}(\mathbf{x})$')
-        ax1.set_ylabel('Test error (%)', color=color_error)
-        ax1.plot(binned_lambda1, binned_errors, color=color_error, label='Test error (%)')
-        ax1.tick_params(axis='y', labelcolor=color_error)
-        ax1.set_ylim(bottom=0) # Error should not go below 0
+            ax2 = ax.twinx()  # instantiate a second axes that shares the same x-axis
+            color_entropy = 'green'
+            ax2.set_ylabel(r'$H$', color=color_entropy)  # we already handled the x-label with ax1
+            ax2.plot(binned_lambda, binned_entropies, color=color_entropy, label='H')
+            ax2.tick_params(axis='y', labelcolor=color_entropy)
+            ax2.set_ylim(bottom=0) # Entropy should not go below 0
 
-        ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
-        color_entropy = 'green'
-        ax2.set_ylabel(r'$H$', color=color_entropy)  # we already handled the x-label with ax1
-        ax2.plot(binned_lambda1, binned_entropies, color=color_entropy, label='H')
-        ax2.tick_params(axis='y', labelcolor=color_entropy)
-        ax2.set_ylim(bottom=0) # Entropy should not go below 0
-
-        # Add grid and title for better readability
-        ax1.grid(True, linestyle='--', alpha=0.6)
-        plt.title('Classification Error and Predictive Uncertainty vs. $\lambda_1^{(L)}(\mathbf{x})$')
+            # Add grid and title for better readability
+            ax.grid(True, linestyle='--', alpha=0.6)
 
         fig.tight_layout()  # otherwise the right y-label is slightly clipped
-        plt.savefig("error_entropy_vs_lambda1.png", dpi=300)
+        plt.savefig("error_entropy_vs_lambda.png", dpi=300)
         plt.close()
-        print("Plot saved as error_entropy_vs_lambda1.png")
-    
+        print("Plot saved as error_entropy_vs_lambda.png")
+
     def fgsm_attack(self, images, attack_size, image_grads):
         sign_image_grads = image_grads.sign()
         perturbed_images = images + attack_size * sign_image_grads
@@ -458,10 +451,12 @@ def main():
     classifier              = MNISTClassification()
     
     # change as desired
-    num_models_averaged     = 5
+    num_models_averaged     = 2
     hidden_layer_sizes_list = range(10, 120, 5)
     attack_sizes            = [0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
-    desired_plot            =  DesiredPlot.ATTACK
+    num_lyap_exp            = 3
+    desired_plot            =  DesiredPlot.ENTROPY
+    
 
     if desired_plot == DesiredPlot.FTLE_2D:
         original_model            = TanhSoftmaxNet().to(classifier.device)
@@ -487,7 +482,7 @@ def main():
             trained_model   = classifier.train_model(untrained_model, title=f"Ensemble Model {num+1} Training")
             ensemble_models.append(trained_model)
         
-        classifier.plot_error_and_entropy_vs_lambda1(ensemble_models)
+        classifier.plot_error_and_entropy_vs_lambda(ensemble_models)
 
     if desired_plot == DesiredPlot.AVERAGE:
         average_eig1_list                   = []
@@ -502,7 +497,7 @@ def main():
             for num in range(num_models_averaged):
                 untrained_model   = TanhSoftmaxNet(hidden_layer_size = hidden_layer_size).to(classifier.device)
                 trained_model     = classifier.train_model(untrained_model, title=f"Model {num+1}/{num_models_averaged} Training")
-                average_eig1, standard_dev_eig1 = classifier.per_model_ftle(trained_model)
+                average_eig1, standard_dev_eig1, _ = classifier.per_model_stats(trained_model)
                 
                 average_eig1_size_i_list.append(average_eig1)
                 std_eig1_size_i_list.append(standard_dev_eig1)
@@ -530,22 +525,29 @@ def main():
         classifier.analyze_attacks(trained_model, attack_sizes)
 
     if desired_plot == DesiredPlot.STAT_TABLE:
-        average_eig1_size_i_list = []
-        std_eig1_size_i_list = []
+        average_eig_list = []
+        std_eig_list     = []
+        accuracy_list    = []
 
         for num in range(num_models_averaged):
-            untrained_model   = TanhSoftmaxNet(hidden_layer_size = hidden_layer_size).to(classifier.device)
+            untrained_model   = TanhSoftmaxNet().to(classifier.device)
             trained_model     = classifier.train_model(untrained_model, title=f"Model {num+1}/{num_models_averaged} Training")
-            average_eig1, standard_dev_eig1 = classifier.per_model_ftle(trained_model)
+            average_eig, standard_dev_eig, accuracy = classifier.per_model_stats(trained_model, num_lyap_exp)
             
-            average_eig1_size_i_list.append(average_eig1)
-            std_eig1_size_i_list.append(standard_dev_eig1)
+            average_eig_list.append(average_eig)
+            std_eig_list.append(standard_dev_eig)
+            accuracy_list.append(accuracy)
 
-        avg_avg_of_eig1     = sum(average_eig1_size_i_list) / num_models_averaged
-        avg_std_dev_of_eig1 = sum(std_eig1_size_i_list)     / num_models_averaged
+        avg_acc             = sum(accuracy_list)            / num_models_averaged
+        std_acc             = statistics.stdev(accuracy_list)
+        print(f'The average of {num_models_averaged} runs was an an average of {avg_acc} with a standard deviation of {std_acc} for the percent of pictures correctly classified.')
+        
+        average_eig_tensor = torch.stack(average_eig_list)
+        std_eig_tensor     = torch.stack(std_eig_list)
 
-        print(f'The average of {num_models_averaged} runs was an an average of {avg_avg_of_eig1} with a standard deviation of {avg_std_dev_of_eig1} for mu1.')
-        print(f'The average of {num_models_averaged} runs was an an average of {avg_avg_of_eig1} with a standard deviation of {avg_std_dev_of_eig1} for the percent of pictures correctly classified.')
-
-if __name__ == "__main__":_
+        for i in range(num_lyap_exp):
+            avg_avg_of_eigi     = average_eig_tensor[:,i].mean().item()
+            avg_std_dev_of_eigi = std_eig_tensor[    :,i].mean().item()
+            print(f'The average of {num_models_averaged} runs was an an average of {avg_avg_of_eigi} with a standard deviation of {avg_std_dev_of_eigi} for mu{i+1}.')
+if __name__ == "__main__":
     main()
