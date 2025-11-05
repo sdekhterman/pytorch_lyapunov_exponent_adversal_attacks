@@ -13,7 +13,24 @@ from torch.utils.data import Subset
 import scienceplots
 
 class TanhSoftmaxNet(nn.Module):
+    """
+    A deep, feed-forward neural network (MLP) using Tanh activations.
+
+    This network consists of an initial linear layer, a specified number of 
+    repeating hidden (Linear + Tanh) layers, and a final linear output layer.
+    It includes custom weight initialization and a method to calculate
+    Finite-Time Lyapunov Exponents (FTLEs).
+    """
     def __init__(self, input_size=784, hidden_layer_size=20, numb_hidden_layers=16, number_of_outputs=10):
+        """
+        Initializes the TanhSoftmaxNet architecture.
+
+        Args:
+            input_size (int): The dimensionality of the input features (e.g., 784 for flattened 28x28 MNIST).
+            hidden_layer_size (int): The number of neurons in each hidden layer.
+            numb_hidden_layers (int): The number of (Linear + Tanh) blocks.
+            number_of_outputs (int): The dimensionality of the output (e.g., 10 for MNIST classes).
+        """
         super(TanhSoftmaxNet, self).__init__()
         self.hidden_layer_size = hidden_layer_size
         self.numb_hidden_layers = numb_hidden_layers
@@ -27,6 +44,13 @@ class TanhSoftmaxNet(nn.Module):
         self._initialize_weights()
 
     def _initialize_weights(self) -> None:
+        """
+        Applies custom weight and bias initialization to the linear layers.
+
+        Weights are initialized from a normal distribution with mean 0 and std
+        dev sqrt(1 / hidden_layer_size). Biases are initialized to 0.
+        This is a variant of Xavier/Glorot initialization suitable for Tanh.
+        """
         for module in self.network:
             if isinstance(module, nn.Linear):
                 nn.init.normal_(module.weight, mean=0.0, std=math.sqrt(1 / self.hidden_layer_size))
@@ -34,9 +58,34 @@ class TanhSoftmaxNet(nn.Module):
                     nn.init.constant_(module.bias, 0.0)
 
     def forward(self, x):
+        """
+        Defines the forward pass of the network.
+
+        Args:
+            x (torch.Tensor): The input tensor.
+
+        Returns:
+            torch.Tensor: The output tensor (logits).
+        """
         return self.network(x)
     
     def max_n_finite_time_lyapunov_exponents(self, x: torch.Tensor, num_lyap_exp: int = 1) -> list[torch.Tensor]:
+        """
+        Calculates the top 'n' Finite-Time Lyapunov Exponents (FTLEs) for the network.
+
+        This method computes the input-output Jacobian of the *hidden layers* (excluding the final output layer). It then uses the singular values
+        of this Jacobian to estimate the FTLEs, which measure the network's
+        sensitivity to perturbations in the input.
+
+        Args:
+            x (torch.Tensor): The batch of input tensors.
+            num_lyap_exp (int): The number of top exponents to return.
+
+        Returns:
+            torch.Tensor: A tensor of shape (batch_size, num_lyap_exp) containing
+                          the requested FTLEs, normalized by the number of hidden
+                          layers.
+        """
         if x.dim() == 1:
             x = x.unsqueeze(0)
 
@@ -70,7 +119,21 @@ class TanhSoftmaxNet(nn.Module):
 
 
 class BottleneckNet(nn.Module):
+    """
+    A network that adds a trainable "bottleneck" to a pre-trained feature extractor.
+    
+    This is often used for dimensionality reduction (e.g., to 2D for visualization)
+    or for transfer learning on top of a frozen base network.
+    """
     def __init__(self, feature_extractor, number_of_outputs=10):
+        """
+        Initializes the BottleneckNet.
+
+        Args:
+            feature_extractor (nn.Module): A pre-trained model (or part of one)
+                that extracts features. Its output is assumed to be 20-dimensional.
+            number_of_outputs (int): The final output dimensionality (e.g., 10 classes).
+        """
         super(BottleneckNet, self).__init__()
         self.feature_extractor = feature_extractor
         
@@ -82,13 +145,41 @@ class BottleneckNet(nn.Module):
         )
 
     def forward(self, x):
+        """
+        Defines the forward pass.
+
+        Args:
+            x (torch.Tensor): The input tensor.
+
+        Returns:
+            torch.Tensor: The final output (logits).
+        """
         features = self.feature_extractor(x)
         self.model = self.bottleneck(features)
         return self.model
 
 
 class MNISTClassification:
+    """
+    A controller class for managing the training, testing, and analysis 
+    of models on the MNIST dataset.
+
+    This class encapsulates data loading, training loops, test loops,
+    FTLE calculation, adversarial attack generation (FGSM), and
+    plotting/visualization of results.
+    """
     def __init__(self, learning_rate: float = 5e-3, momentum: float = 0.9, number_of_epochs: int = 25, batch_size: int = 64, debug: bool = False) -> None:
+        """
+        Initializes the MNIST workflow manager.
+
+        Args:
+            learning_rate (float): Learning rate for the SGD optimizer.
+            momentum (float): Momentum for the SGD optimizer.
+            number_of_epochs (int): Number of epochs to train.
+            batch_size (int): Batch size for training.
+            debug (bool): If True, reduces the number of epochs and test data
+                          for quick debugging runs.
+        """
         self.learning_rate    = learning_rate
         self.momentum         = momentum
         self.number_of_epochs = number_of_epochs
@@ -133,6 +224,16 @@ class MNISTClassification:
         self.numb_adversaila_examples = 5
 
     def train_model(self, model, title="Training Phase"):
+        """
+        Trains a given PyTorch model on the MNIST training dataset.
+
+        Args:
+            model (nn.Module): The model instance to be trained.
+            title (str): A title string to print at the start of training.
+
+        Returns:
+            nn.Module: The trained model.
+        """
         print(f"--- Starting: {title} ---")
         optimizer = optim.SGD(filter(lambda p: p.requires_grad, model.parameters()),lr=self.learning_rate, momentum=self.momentum)
         
@@ -167,6 +268,22 @@ class MNISTClassification:
         return model
 
     def test_model(self, model, num_lyap_exp = 1):
+        """
+        Evaluates a model on the test dataset.
+        
+        Also computes the average and standard deviation of the top
+        Lyapunov exponent(s) across the entire test set.
+
+        Args:
+            model (nn.Module): The model to evaluate.
+            num_lyap_exp (int): The number of FTLEs to compute.
+
+        Returns:
+            tuple:
+                - torch.Tensor: Average FTLE(s) over the test set.
+                - torch.Tensor: Standard deviation of FTLE(s) over the test set.
+                - float: Test accuracy percentage.
+        """
         model.eval()
         n_correct  = 0
         n_samples  = 0
@@ -194,51 +311,77 @@ class MNISTClassification:
         return average_lyap, stddev_lyap, accuracy
 
     def visualize_ftle_on_data_points(self):
-            print("\n--- Visualizing FTLE Value for Each Data Point ---")
-            if self.bottleneck_model is None:
-                print("Bottleneck model not trained. Cannot visualize.")
-                return
-            
-            self.original_model.eval()
-            self.bottleneck_model.eval()
-            
-            lyaps_list        = []
-            points_list       = []
-            samples_processed = 0
-
-            # disabling gradient speeds things up
-            with torch.no_grad():
-                for images, _ in self.test_loader:
-                    images = images.reshape(self.reshape_size).to(self.device)
-                    lyaps_batch      = self.original_model.max_n_finite_time_lyapunov_exponents(images)
-                    features_batch   = self.bottleneck_model.feature_extractor(images)
-                    bottleneck_batch = self.bottleneck_model.bottleneck[0](features_batch)
-                    
-                    lyaps_list.append(lyaps_batch)
-                    points_list.append(bottleneck_batch)
-
-                    samples_processed += images.size(0)
-                    print(f"Total samples processed: {samples_processed}")
-
-            all_max_lyaps_gpu = torch.cat(lyaps_list, dim=0).cpu().numpy()
-            all_points_gpu    = torch.cat(points_list, dim=0).cpu().numpy()
-
-            with plt.style.context(["science"]):
-                plt.figure(figsize=(6, 4))
-
-                scatter = plt.scatter(all_points_gpu[:, 0], all_points_gpu[:, 1], c=all_max_lyaps_gpu, cmap='coolwarm', alpha=0.8, s=15)
-
-                plt.colorbar(scatter, label="Max FTLE ($\log_{10}$ scale)")
-                plt.title('Bottleneck Activations Colored by FTLE Value')
-                plt.xlabel('Neuron 1 Activation')
-                plt.ylabel('Neuron 2 Activation')
-                plt.grid(True, linestyle='--', alpha=0.3)
-                plt.axis('equal')
-                plt.savefig(self.mnist_2d_proj_plot_path, dpi=600)
-                plt.close()
-                print("Plot saved. :)")
+        """
+        Generates a 2D scatter plot of the bottleneck layer's activations.
         
+        Each point in the plot corresponds to a test set image, and its
+        color represents the FTLE value calculated by the original model
+        for that same image.
+        
+        Saves the plot to `self.mnist_2d_proj_plot_path`.
+        """
+        print("\n--- Visualizing FTLE Value for Each Data Point ---")
+        if self.bottleneck_model is None:
+            print("Bottleneck model not trained. Cannot visualize.")
+            return
+        
+        self.original_model.eval()
+        self.bottleneck_model.eval()
+        
+        lyaps_list        = []
+        points_list       = []
+        samples_processed = 0
+
+        # disabling gradient speeds things up
+        with torch.no_grad():
+            for images, _ in self.test_loader:
+                images = images.reshape(self.reshape_size).to(self.device)
+                lyaps_batch      = self.original_model.max_n_finite_time_lyapunov_exponents(images)
+                features_batch   = self.bottleneck_model.feature_extractor(images)
+                bottleneck_batch = self.bottleneck_model.bottleneck[0](features_batch)
+                
+                lyaps_list.append(lyaps_batch)
+                points_list.append(bottleneck_batch)
+
+                samples_processed += images.size(0)
+                print(f"Total samples processed: {samples_processed}")
+
+        all_max_lyaps_gpu = torch.cat(lyaps_list, dim=0).cpu().numpy()
+        all_points_gpu    = torch.cat(points_list, dim=0).cpu().numpy()
+
+        with plt.style.context(["science"]):
+            plt.figure(figsize=(6, 4))
+
+            scatter = plt.scatter(all_points_gpu[:, 0], all_points_gpu[:, 1], c=all_max_lyaps_gpu, cmap='coolwarm', alpha=0.8, s=15)
+
+            plt.colorbar(scatter, label="Max FTLE ($\log_{10}$ scale)")
+            plt.title('Bottleneck Activations Colored by FTLE Value')
+            plt.xlabel('Neuron 1 Activation')
+            plt.ylabel('Neuron 2 Activation')
+            plt.grid(True, linestyle='--', alpha=0.3)
+            plt.axis('equal')
+            plt.savefig(self.mnist_2d_proj_plot_path, dpi=600)
+            plt.close()
+            print("Plot saved. :)")
+    
     def plot_error_and_entropy_vs_lambda(self, ensemble_models, num_lyap_exp = 1, bin_edges=50):
+        """
+        Generates a plot of test error and predictive entropy vs. FTLE (lambda).
+
+        This function processes the test set, and for each image, it calculates:
+        1. The average FTLE (lambda) across an ensemble of models.
+        2. The average predictive probability distribution across the ensemble.
+        3. The predictive entropy (uncertainty) from this average distribution.
+        4. The ensemble's prediction error (if the max avg. prob. is wrong).
+
+        It then bins the data by the average lambda value and plots the
+        mean error and mean entropy within each bin.
+
+        Args:
+            ensemble_models (list[nn.Module]): A list of trained models.
+            num_lyap_exp (int): The number of FTLEs to analyze (e.g., 1 for lambda_1).
+            bin_edges (int): The number of bins to use for lambda.
+        """
         print("\n--- Generating Error and Entropy vs. Lambda_1 Plot ---")
         if not ensemble_models:
             print("No models provided for ensemble. Cannot generate plot.")
@@ -350,6 +493,17 @@ class MNISTClassification:
         print("Plot saved. :)")
         
     def analyze_attacks(self, model, attack_sizes):
+        """
+        Runs adversarial attacks (FGSM) for various strengths and plots examples.
+
+        It calls `test_attack` for each epsilon in `attack_sizes` and then
+        generates a plot comparing original images to their successful
+        adversarial counterparts.
+
+        Args:
+            model (nn.Module): The model to attack.
+            attack_sizes (list[float]): A list of attack strengths (epsilons).
+        """
         accuracies   = []
         all_examples = []
 
@@ -393,6 +547,19 @@ class MNISTClassification:
                 print("Try training the model for more epochs or increasing attack size.")
 
     def test_attack(self, model, attack_size):
+        """
+        Tests the model's accuracy under an FGSM adversarial attack.
+
+        Args:
+            model (nn.Module): The model to attack.
+            attack_size (float): The epsilon value (strength) of the attack.
+
+        Returns:
+            tuple:
+                - float: The model's accuracy on the perturbed dataset.
+                - list: A list of (orig_pred, adv_pred, orig_img, adv_img)
+                        tuples for successful attacks.
+        """
         n_correct    = 0
         adv_examples = []
         model.eval() 
@@ -436,6 +603,17 @@ class MNISTClassification:
         return final_acc, adv_examples
     
     def fgsm_attack(self, images, attack_size, image_grads):
+        """
+        Performs the Fast Gradient Sign Method (FGSM) attack.
+
+        Args:
+            images (torch.Tensor): The original input images.
+            attack_size (float): The attack strength (epsilon).
+            image_grads (torch.Tensor): The gradients of the loss w.r.t. the images.
+
+        Returns:
+            torch.Tensor: The perturbed (adversarial) images.
+        """
         sign_image_grads = image_grads.sign()
         perturbed_images = images + attack_size * sign_image_grads
         perturbed_images = torch.clamp(perturbed_images, 0, 1) # valid range [0, 1]
@@ -457,7 +635,7 @@ def main():
     hidden_layer_sizes_list = range(10, 120, 20)
     attack_sizes            = [0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
     num_lyap_exp            = 3
-    desired_plot            =  DesiredPlot.STAT_TABLE
+    desired_plot            =  DesiredPlot.STAT_TABLE #Prof Rainer Engelken try each of the options for this
     
 
     if desired_plot == DesiredPlot.FTLE_2D:
