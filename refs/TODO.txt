@@ -1,14 +1,13 @@
 ## Current Tasks
 1. Attack Integration
-    1  plot mu_2 and mu_3 
-    2. stack plots of mu_1, mu_2, and mu_3
-    3. save stack to image folder
-    4. compute the correlation
-    5. print mu_1, mu_2, ..., mu_n and percent correct for different attack epsilons
-    6. percent differences
-    7. add diff attacks to the stacked plot
+    1. save stack to image folder
+    2. compute the correlation
+    ----------------------------------write report-------------------------------------
+    3. print mu_1, mu_2, ..., mu_n and percent correct for different attack epsilons
+    4. percent differences
+    5. add diff attacks to the stacked plot
     -----------------------------------clean up---------------------------------------
-    8.  better plot saving for the other functions
+    6.  better plot saving for the other functions
     9. better plot text sizing
     10. remove magic number 
     11. comment code function level
