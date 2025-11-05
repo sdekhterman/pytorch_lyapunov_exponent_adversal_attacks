@@ -13,8 +13,11 @@ After installing conda, in a terminal copy the following set of commands
 conda create --name lyap_exp_attacks
 conda activate lyap_exp_attacks
 git clone https://github.com/sdekhterman/pytorch_lyapunov_exponent_adversal_attacks.git
-pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu126
 conda install -c conda-forge scienceplots
+```
+and then copy
+```
+pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu126
 ```
 This repositry also used PyTorch to train the deep neural network. If you have conflicts when installing the requirments.txt consider visiting https://pytorch.org/get-started/locally/ to get a version appropriate for your machine/ container.
 
