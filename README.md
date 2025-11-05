@@ -27,4 +27,4 @@ and run the main file of interest
 ```
 python3 mnist_classification.py
 ```
-where the 'desired_plot' is set set internally in the main() function at the bottom.
+where the 'desired_plot' is set set internally in the 'main()' function at the bottom of 'mnist_classification.py'.
