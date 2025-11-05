@@ -10,6 +10,7 @@ import numpy as np
 import os
 from enum import Enum
 from torch.utils.data import Subset
+import scienceplots
 
 class TanhSoftmaxNet(nn.Module):
     def __init__(self, input_size=784, hidden_layer_size=20, numb_hidden_layers=16, number_of_outputs=10):
@@ -87,27 +88,38 @@ class BottleneckNet(nn.Module):
 
 
 class MNISTClassification:
-    def __init__(self, learning_rate: float = 0.2, number_of_epochs: int = 1, batch_size: int = 64, display_training_updates = True) -> None:
+    def __init__(self, learning_rate: float = 0.2, number_of_epochs: int = 25, batch_size: int = 64, display_training_updates = True, debug = False) -> None:
         self.batch_size               = batch_size
         self.learning_rate            = learning_rate
-        self.number_of_epochs         = number_of_epochs
+        self.number_of_epochs = number_of_epochs
+        if debug:
+            self.number_of_epochs = 5
         self.display_training_updates = display_training_updates
         
         transform         = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]) 
         train_dataset     = torchvision.datasets.MNIST(root='./data', train=True, transform=transform, download=True)
         test_dataset      = torchvision.datasets.MNIST(root='./data', train=False, transform=transform)
         
-        subset_indices = range(200)
-        test_subset = Subset(test_dataset, subset_indices)
-        
+        if debug:
+            subset_indices = range(500)
+            test_dataset = Subset(test_dataset, subset_indices)
+
         self.train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=self.batch_size, shuffle=True)
-        self.test_loader  = torch.utils.data.DataLoader(dataset=test_subset, batch_size=1000, shuffle=False, num_workers=4, pin_memory=True) # Speed up CPU to GPU transfer
+        self.test_loader  = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=1000, shuffle=False)
 
         self.criterion = nn.CrossEntropyLoss()
         self.device    = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
         self.original_model   = None
         self.bottleneck_model = None
+
+        my_path        = os.path.dirname(os.path.abspath(__file__))
+        my_path_parent = os.path.dirname(my_path)
+
+        self.attack_plot_path          = my_path_parent + "/images/fgsm_example_attack.png"
+        self.acc_vs_num_plot_path      = my_path_parent + "/images/accuracy_vs_num.png"
+        self.mnist_2d_proj_plot_path   = my_path_parent + "/images/mnist_2d_projection.png"
+        self.err_ent_vs_lmbd_plot_path = my_path_parent + "/images/error_entropy_vs_lambda.png"
 
     def test_model(self, model):
         model.eval()
@@ -216,26 +228,20 @@ class MNISTClassification:
             all_max_lyaps_gpu = torch.cat(lyaps_list, dim=0).cpu().numpy()
             all_points_gpu    = torch.cat(points_list, dim=0).cpu().numpy()
 
-            plt.figure(figsize=(12, 10))
-    
-            scatter = plt.scatter(all_points_gpu[:, 0], all_points_gpu[:, 1], c=all_max_lyaps_gpu, cmap='coolwarm', alpha=0.8, s=15)
+            with plt.style.context(["science"]):
+                plt.figure(figsize=(6, 4))
 
-            cbar = plt.colorbar(scatter, label="Max FTLE ($\log_{10}$ scale)")
-            cbar.ax.yaxis.label.set_size(14)     # label font
-            cbar.ax.tick_params(labelsize=12)    # ticks
-            plt.title('Bottleneck Activations Colored by FTLE Value'  , fontsize=16)
-            plt.xlabel('Neuron 1 Activation', fontsize=14)
-            plt.ylabel('Neuron 2 Activation', fontsize=14)
-            plt.rc('axes', labelsize=14)
-            plt.rc('xtick', labelsize=14)
-            plt.rc('ytick', labelsize=14)
-            plt.tick_params(axis='x', labelsize=14)
-            plt.tick_params(axis='y', labelsize=14)
-            plt.rc('font', size=14)
-            plt.grid(True, linestyle='--', alpha=0.3)
-            plt.axis('equal')
-            plt.savefig("mnist_2d_projection.png", dpi=600)
-            plt.close()
+                scatter = plt.scatter(all_points_gpu[:, 0], all_points_gpu[:, 1], c=all_max_lyaps_gpu, cmap='coolwarm', alpha=0.8, s=15)
+
+                cbar = plt.colorbar(scatter, label="Max FTLE ($\log_{10}$ scale)")
+                plt.title('Bottleneck Activations Colored by FTLE Value')
+                plt.xlabel('Neuron 1 Activation')
+                plt.ylabel('Neuron 2 Activation')
+                plt.grid(True, linestyle='--', alpha=0.3)
+                plt.axis('equal')
+                plt.savefig(self.mnist_2d_proj_plot_path, dpi=600)
+                plt.close()
+                print("Plot saved. :)")
         
     def plot_error_and_entropy_vs_lambda(self, ensemble_models, num_lyap_exp = 1, bin_edges=50):
         print("\n--- Generating Error and Entropy vs. Lambda_1 Plot ---")
@@ -288,69 +294,67 @@ class MNISTClassification:
         
         if num_lyap_exp == 1:     
             all_lambdas = all_lambdas.reshape(-1, 1)
+        with plt.style.context(["science"]):
+            fig, axes = plt.subplots(num_lyap_exp, 1, figsize=(10, 4))
 
-        fig, axes = plt.subplots(num_lyap_exp, 1, figsize=(10, 4))
+            # If only one subplot, axes is not iterable — make it a list
+            if num_lyap_exp == 1:
+                axes = [axes]
 
-        # If only one subplot, axes is not iterable — make it a list
-        if num_lyap_exp == 1:
-            axes = [axes]
+            fig.suptitle('Classification Error and Predictive Uncertainty vs. $\lambda_i^{(L)}(\mathbf{x})$')
 
-        fig.suptitle('Classification Error and Predictive Uncertainty vs. $\lambda_i^{(L)}(\mathbf{x})$')
-
-        for i, ax in enumerate(axes):
-            
-            lambdas_i = all_lambdas[:, i] 
-
-            min_lambda  = np.min(lambdas_i)
-            max_lambda  = np.max(lambdas_i)
-            lambda_bins = np.linspace(min_lambda, max_lambda, bin_edges)
-
-            binned_lambda    = []
-            binned_errors    = []
-            binned_entropies = []
-
-            # Iterate through bins and calculate average error and entropy
-            for i in range(len(lambda_bins) - 1):
-                lower_bound = lambda_bins[i]
-                upper_bound = lambda_bins[i+1]
+            for i, ax in enumerate(axes):
                 
-                if i == len(lambda_bins) - 2: # Include the max value in the last bin
-                    bin_indices = np.where((lambdas_i >= lower_bound) & (lambdas_i <= upper_bound))
-                else:
-                    bin_indices = np.where((lambdas_i >= lower_bound) & (lambdas_i < upper_bound))
-                
-                if len(bin_indices[0]) > 0:
-                    avg_lambda_in_bin  = np.mean(  lambdas_i[bin_indices])
-                    avg_error_in_bin   = np.mean(   all_errors[bin_indices]) * 100 # Convert to percentage
-                    avg_entropy_in_bin = np.mean(all_entropies[bin_indices])
+                lambdas_i = all_lambdas[:, i] 
 
-                    binned_lambda.append(avg_lambda_in_bin)
-                    binned_errors.append(avg_error_in_bin)
-                    binned_entropies.append(avg_entropy_in_bin)
+                min_lambda  = np.min(lambdas_i)
+                max_lambda  = np.max(lambdas_i)
+                lambda_bins = np.linspace(min_lambda, max_lambda, bin_edges)
 
-            color_error = 'black'
-            ax.set_xlabel(r'$\lambda_1^{(L)}(\mathbf{x})$')
-            ax.set_ylabel('Test error (%)', color=color_error)
-            ax.plot(binned_lambda, binned_errors, color=color_error, label='Test error (%)')
-            ax.tick_params(axis='y', labelcolor=color_error)
-            ax.set_ylim(bottom=0) # Error should not go below 0
+                binned_lambda    = []
+                binned_errors    = []
+                binned_entropies = []
 
-            ax2 = ax.twinx()  # instantiate a second axes that shares the same x-axis
-            color_entropy = 'green'
-            ax2.set_ylabel(r'$H$', color=color_entropy)  # we already handled the x-label with ax1
-            ax2.plot(binned_lambda, binned_entropies, color=color_entropy, label='H')
-            ax2.tick_params(axis='y', labelcolor=color_entropy)
-            ax2.set_ylim(bottom=0) # Entropy should not go below 0
+                # Iterate through bins and calculate average error and entropy
+                for i in range(len(lambda_bins) - 1):
+                    lower_bound = lambda_bins[i]
+                    upper_bound = lambda_bins[i+1]
+                    
+                    if i == len(lambda_bins) - 2: # Include the max value in the last bin
+                        bin_indices = np.where((lambdas_i >= lower_bound) & (lambdas_i <= upper_bound))
+                    else:
+                        bin_indices = np.where((lambdas_i >= lower_bound) & (lambdas_i < upper_bound))
+                    
+                    if len(bin_indices[0]) > 0:
+                        avg_lambda_in_bin  = np.mean(  lambdas_i[bin_indices])
+                        avg_error_in_bin   = np.mean(   all_errors[bin_indices]) * 100 # Convert to percentage
+                        avg_entropy_in_bin = np.mean(all_entropies[bin_indices])
 
-            # Add grid and title for better readability
-            ax.grid(True, linestyle='--', alpha=0.6)
+                        binned_lambda.append(avg_lambda_in_bin)
+                        binned_errors.append(avg_error_in_bin)
+                        binned_entropies.append(avg_entropy_in_bin)
 
-        fig.tight_layout()  # otherwise the right y-label is slightly clipped
-        plt.savefig("error_entropy_vs_lambda.png", dpi=300)
-        plt.close()
-        print("Plot saved as error_entropy_vs_lambda.png")
+                color_error = 'black'
+                ax.set_xlabel(r'$\lambda_i^{(L)}(\mathbf{x})$')
+                ax.set_ylabel('Test Error' +  '$(\%)$', color=color_error)
+                ax.plot(binned_lambda, binned_errors, color=color_error, label='Test Error' +  '$(\%)$')
+                ax.tick_params(axis='y', labelcolor=color_error)
+                ax.set_ylim(bottom=0) # Error should not go below 0
+
+                ax2 = ax.twinx()  # instantiate a second axes that shares the same x-axis
+                color_entropy = 'green'
+                ax2.set_ylabel(r'$H$', color=color_entropy)  # we already handled the x-label with ax1
+                ax2.plot(binned_lambda, binned_entropies, color=color_entropy, label='H')
+                ax2.tick_params(axis='y', labelcolor=color_entropy)
+                ax2.set_ylim(bottom=0) # Entropy should not go below 0
+
+                # Add grid and title for better readability
+                ax.grid(True, linestyle='--', alpha=0.6)
+
+            plt.savefig(self.err_ent_vs_lmbd_plot_path, dpi=600)
+            plt.close()
+        print("Plot saved. :)")
         
-
     def fgsm_attack(self, images, attack_size, image_grads):
         sign_image_grads = image_grads.sign()
         perturbed_images = images + attack_size * sign_image_grads
@@ -395,8 +399,8 @@ class MNISTClassification:
                     orig_ex       = image_ref[index].squeeze().detach().cpu().numpy()
                     adv_examples.append((init_pred_item, final_pred_item, orig_ex, adv_ex))
 
-        final_acc = n_correct / float(len(self.test_loader.dataset.data))
-        print(f"Epsilon: {attack_size}\tTest Accuracy = {n_correct} / {len(self.test_loader.dataset.data)} = {final_acc:.4f}")
+        final_acc = n_correct / float(len(self.test_loader.dataset))
+        print(f"Epsilon: {attack_size}\tTest Accuracy = {n_correct} / {len(self.test_loader.dataset)} = {final_acc:.4f}")
 
         return final_acc, adv_examples
     
@@ -408,45 +412,40 @@ class MNISTClassification:
             acc, ex = self.test_attack(model, attack_size)
             accuracies.append(acc)
             all_examples.append(ex)
+        with plt.style.context(["science"]):
+            plt.figure(figsize=(10, 8))
 
-
-        my_path        = os.path.dirname(os.path.abspath(__file__))
-        my_path_parent = os.path.dirname(my_path)
-        my_file        = "/images/fgsm_example_attack.png"
-        plot_path      = my_path_parent + my_file
-
-        plt.figure(figsize=(10, 8))
-
-        try:
-            examples_to_show = all_examples[3]
-            cnt = 0
-            for i in range(len(examples_to_show)):
-                cnt += 1
-                orig_pred, adv_pred, orig_img, adv_img = examples_to_show[i]
-                
-                # Original Image
-                plt.subplot(2, 5, cnt)
-                plt.xticks([], [])
-                plt.yticks([], [])
-                plt.title(f"Original: {orig_pred}")
-                plt.imshow(orig_img, cmap="gray")
-                
-                # Adversarial Image
-                plt.subplot(2, 5, cnt + 5)
-                plt.xticks([], [])
-                plt.yticks([], [])
-                plt.title(f"Adversarial: {adv_pred}")
-                plt.imshow(adv_img, cmap="gray")
-                
-                if cnt == 5:
-                    break
+            try:
+                examples_to_show = all_examples[3]
+                cnt = 0
+                for i in range(len(examples_to_show)):
+                    cnt += 1
+                    orig_pred, adv_pred, orig_img, adv_img = examples_to_show[i]
                     
-            plt.tight_layout()
-            plt.savefig(plot_path, dpi=600)
+                    # Original Image
+                    plt.subplot(2, 5, cnt)
+                    plt.xticks([], [])
+                    plt.yticks([], [])
+                    plt.title(f"Original: {orig_pred}")
+                    plt.imshow(orig_img, cmap="gray")
+                    
+                    # Adversarial Image
+                    plt.subplot(2, 5, cnt + 5)
+                    plt.xticks([], [])
+                    plt.yticks([], [])
+                    plt.title(f"Adversarial: {adv_pred}")
+                    plt.imshow(adv_img, cmap="gray")
+                    
+                    if cnt == 5:
+                        break
+                        
+                plt.savefig(self.attack_plot_path, dpi=600)
+                plt.close()
+                print("Plot saved. :)")
 
-        except IndexError:
-            print("\nNot enough adversarial examples found to display for that attack size.")
-            print("Try training the model for more epochs or increasing attack size.")
+            except IndexError:
+                print("\nNot enough adversarial examples found to display for that attack size.")
+                print("Try training the model for more epochs or increasing attack size.")
 
 
 class DesiredPlot(Enum):
@@ -457,14 +456,14 @@ class DesiredPlot(Enum):
     STAT_TABLE = 5
 
 def main():
-    classifier              = MNISTClassification()
+    classifier = MNISTClassification(debug=True) # set debug flag to True if you want code to run in 1x minutes instead of 10x minutes
     
     # change as desired
-    num_models_averaged     = 2
-    hidden_layer_sizes_list = range(10, 120, 5)
+    num_models_averaged     = 5
+    hidden_layer_sizes_list = range(10, 120, 20)
     attack_sizes            = [0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
     num_lyap_exp            = 3
-    desired_plot            =  DesiredPlot.ENTROPY
+    desired_plot            =  DesiredPlot.STAT_TABLE
     
 
     if desired_plot == DesiredPlot.FTLE_2D:
@@ -494,9 +493,8 @@ def main():
         classifier.plot_error_and_entropy_vs_lambda(ensemble_models, num_lyap_exp)
 
     if desired_plot == DesiredPlot.AVERAGE:
-        average_eig1_list                   = []
-        standard_dev_eig1_list              = []
-        # classifier.display_training_updates = False
+        avg_avg_eig1_list      = []
+        avg_std_dev_eig1_list  = []
 
         for hidden_layer_size in hidden_layer_sizes_list:
             print(f"\n--- Training and Testing with {hidden_layer_size} Nodes Per Layer Hidden---")
@@ -508,25 +506,28 @@ def main():
                 trained_model     = classifier.train_model(untrained_model, title=f"Model {num+1}/{num_models_averaged} Training")
                 average_eig1, standard_dev_eig1, _ = classifier.per_model_stats(trained_model)
                 
-                average_eig1_size_i_list.append(average_eig1)
-                std_eig1_size_i_list.append(standard_dev_eig1)
+                average_eig1_size_i_list.append(average_eig1.item())
+                std_eig1_size_i_list.append(standard_dev_eig1.item())
 
-            average_eig1         = sum(average_eig1_size_i_list) / num_models_averaged
-            standard_dev_of_eig1 = sum(std_eig1_size_i_list) / num_models_averaged
+            avg_avg_eig1     = sum(average_eig1_size_i_list) / num_models_averaged
+            avg_std_dev_eig1 = sum(std_eig1_size_i_list) / num_models_averaged
             
-            average_eig1_list.append(average_eig1)
-            standard_dev_eig1_list.append(standard_dev_of_eig1)
+            avg_avg_eig1_list.append(avg_avg_eig1)
+            avg_std_dev_eig1_list.append(avg_std_dev_eig1)
         
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 2))
-        ax1.semilogx(hidden_layer_sizes_list,         average_eig1_list, label='Average Accuracy')
-        ax2.semilogx(hidden_layer_sizes_list, standard_dev_eig1_list, label='Std Dev of Accuracy')
+        with plt.style.context(["science"]):
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 2))
+            ax1.semilogx(hidden_layer_sizes_list,    avg_avg_eig1_list, label='Average Accuracy')
+            ax2.semilogx(hidden_layer_sizes_list, avg_std_dev_eig1_list, label='Std Dev of Accuracy')
 
-        ax1.set_xlabel('N')
-        ax2.set_xlabel('N')
-        ax1.set_ylabel(r'$\langle \lambda_1^{(L)}(\bf{x}$' + r'$) \rangle$')
-        ax2.set_ylabel(r'Std[$\lambda_1^{(L)}(\bf{x}$)]')
-        plt.tight_layout()
-        plt.savefig("accuracy_vs_num.png", dpi=600)
+            ax1.set_xlabel('N')
+            ax2.set_xlabel('N')
+            ax1.set_ylabel(r'$\langle \lambda_1^{(L)}(\bf{x}$' + r'$) \rangle$')
+            ax2.set_ylabel(r'Std[$\lambda_1^{(L)}(\bf{x}$)]')
+
+            plt.savefig(classifier.acc_vs_num_plot_path, dpi=600)
+            plt.close()
+            print("Plot saved. :)")
 
     if desired_plot == DesiredPlot.ATTACK:
         untrained_model = TanhSoftmaxNet().to(classifier.device)
@@ -547,7 +548,7 @@ def main():
             std_eig_list.append(standard_dev_eig)
             accuracy_list.append(accuracy)
 
-        avg_acc             = sum(accuracy_list)            / num_models_averaged
+        avg_acc             = sum(accuracy_list) / num_models_averaged
         std_acc             = statistics.stdev(accuracy_list)
         print(f'The average of {num_models_averaged} runs was an an average of {avg_acc} with a standard deviation of {std_acc} for the percent of pictures correctly classified.')
         
@@ -558,5 +559,6 @@ def main():
             avg_avg_of_eigi     = average_eig_tensor[:,i].mean().item()
             avg_std_dev_of_eigi = std_eig_tensor[    :,i].mean().item()
             print(f'The average of {num_models_averaged} runs was an an average of {avg_avg_of_eigi} with a standard deviation of {avg_std_dev_of_eigi} for mu{i+1}.')
+
 if __name__ == "__main__":
     main()

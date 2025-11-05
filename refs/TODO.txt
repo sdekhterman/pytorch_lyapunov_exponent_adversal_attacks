@@ -1,18 +1,19 @@
 ## Current Tasks
 1. Attack Integration
-    1. save stack to image folder
-    2. compute the correlation
-    ----------------------------------write report-------------------------------------
-    3. print mu_1, mu_2, ..., mu_n and percent correct for different attack epsilons
-    4. percent differences
-    5. add diff attacks to the stacked plot
     -----------------------------------clean up---------------------------------------
-    6.  better plot saving for the other functions
-    9. better plot text sizing
-    10. remove magic number 
-    11. comment code function level
+    1. have test_model and per_model_stats be the same function with specifiers 
+    2. update readme and requirments.txtso code first time runable
+    2. remove magic number
+    3. comment code function level
+    --------------------------------core deliverable-----------------------------------
+    1. compute the correlation
+    --------------------------------------bonus----------------------------------------
+    1. print mu_1, mu_2, ..., mu_n and percent correct for different attack epsilons
+    2. percent differences
+    3. add diff attacks to the stacked plot
     
-    have test_model and per_model_stats be the same function with specifiers
+    
+    
 
 ## Past Tasks
 1.  Read Project List

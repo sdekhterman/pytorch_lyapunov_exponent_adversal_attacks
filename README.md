@@ -3,7 +3,7 @@
 
 This was done to check that the computation of the Finite-Time Lyapunov Exponents (FTLEs) was implemented correctly. 
 
-As of writing the author plans to re-implement more parts of the Storm2024 paper, add adversalial attacks, and investidate if the FTLEs can be used to make better adversarial attacks.  
+As of writing the author plans to investidate if the FTLEs can be used to make better adversarial attacks.  
 
 ## Installation
 I assumed that the Python virtual enviroment (used to keep python packages version need for the code to run from conflicting with what you have already installed) was created using the conda package. For install instuctions of conda see https://docs.conda.io/projects/conda/en/stable/user-guide/install/index.html. 
@@ -17,6 +17,7 @@ conda activate lyap_exp_attacks
 git clone https://github.com/sdekhterman/pytorch_lyapunov_exponent_adversal_attacks.git
 cd pytorch_lyapunov_exponent_adversal_attacks
 pip install -r requirements.txt
+pip install SciencePlots
 ```
 ## Run Code
 After installing the code,

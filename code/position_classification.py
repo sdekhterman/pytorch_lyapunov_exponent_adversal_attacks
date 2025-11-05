@@ -5,6 +5,7 @@ import torch.optim as optim
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
+import os
 
 
 class DeepTanhNet(nn.Module):
@@ -131,6 +132,9 @@ class PositionClassifcation:
         self.learning_rate      = learning_rate
         self.number_of_epochs   = number_of_epochs
         self.epoch_print_period = epoch_print_period
+
+        my_path        = os.path.dirname(os.path.abspath(__file__))
+        my_path_parent = os.path.dirname(my_path)
         
         # Plotting configuration: classification
         self.test_data_subsample_points = 250
@@ -155,7 +159,7 @@ class PositionClassifcation:
         self.x_label                    = 'x1'
         self.y_label                    = 'x2'
         self.plot_font_size             = 14
-        self.classification_plot_name   = "circleClasfication.png"
+        self.classification_plot_name   = my_path_parent +  "/images/circleClasfication.png"
 
         # Plotting configuration: FTLE
         self.domain_resolution          = 200
@@ -170,7 +174,7 @@ class PositionClassifcation:
         self.ftle_plot_ylabel           = "x_1"
         self.ftle_plot_title            = "Finite-Time Lyapunov Exponents"
         self.ftle_colorbar_label        = "Max FTLE * L"
-        self.ftle_plot_name             = "FTLE.png"
+        self.ftle_plot_name             = my_path_parent + "/images/FTLE.png"
 
         # Data generation and splitting
         x_all, t_all = self.generate_circle_data()
