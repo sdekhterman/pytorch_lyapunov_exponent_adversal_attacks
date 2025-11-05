@@ -260,7 +260,7 @@ class MNISTClassification:
 
                 for model in ensemble_models:
                     model.eval()
-                    lyap_exp = model.max_n_finite_time_lyapunov_exponents(images)
+                    lyap_exp = model.max_n_finite_time_lyapunov_exponents(images, num_lyap_exp)
                     batch_lambdas.append(lyap_exp.cpu().numpy())
                     outputs = model(images)
                     probs   = softmax(outputs)
@@ -284,7 +284,7 @@ class MNISTClassification:
 
         all_errors    = np.array(all_errors).astype(float) # convert bool to float for averaging
         all_entropies = np.array(all_entropies)
-        all_lambdas   = np.concatenate(all_lambdas)
+        all_lambdas   = np.stack(all_lambdas)
         
         if num_lyap_exp == 1:     
             all_lambdas = all_lambdas.reshape(-1, 1)
@@ -299,10 +299,10 @@ class MNISTClassification:
 
         for i, ax in enumerate(axes):
             
-            all_lambdas = all_lambdas[:, i] 
+            lambdas_i = all_lambdas[:, i] 
 
-            min_lambda  = np.min(all_lambdas)
-            max_lambda  = np.max(all_lambdas)
+            min_lambda  = np.min(lambdas_i)
+            max_lambda  = np.max(lambdas_i)
             lambda_bins = np.linspace(min_lambda, max_lambda, bin_edges)
 
             binned_lambda    = []
@@ -315,12 +315,12 @@ class MNISTClassification:
                 upper_bound = lambda_bins[i+1]
                 
                 if i == len(lambda_bins) - 2: # Include the max value in the last bin
-                    bin_indices = np.where((all_lambdas >= lower_bound) & (all_lambdas <= upper_bound))
+                    bin_indices = np.where((lambdas_i >= lower_bound) & (lambdas_i <= upper_bound))
                 else:
-                    bin_indices = np.where((all_lambdas >= lower_bound) & (all_lambdas < upper_bound))
+                    bin_indices = np.where((lambdas_i >= lower_bound) & (lambdas_i < upper_bound))
                 
                 if len(bin_indices[0]) > 0:
-                    avg_lambda_in_bin  = np.mean(  all_lambdas[bin_indices])
+                    avg_lambda_in_bin  = np.mean(  lambdas_i[bin_indices])
                     avg_error_in_bin   = np.mean(   all_errors[bin_indices]) * 100 # Convert to percentage
                     avg_entropy_in_bin = np.mean(all_entropies[bin_indices])
 
@@ -491,7 +491,7 @@ def main():
             trained_model   = classifier.train_model(untrained_model, title=f"Ensemble Model {num+1} Training")
             ensemble_models.append(trained_model)
         
-        classifier.plot_error_and_entropy_vs_lambda(ensemble_models)
+        classifier.plot_error_and_entropy_vs_lambda(ensemble_models, num_lyap_exp)
 
     if desired_plot == DesiredPlot.AVERAGE:
         average_eig1_list                   = []
