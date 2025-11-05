@@ -354,7 +354,7 @@ class MNISTClassification:
 
             scatter = plt.scatter(all_points_gpu[:, 0], all_points_gpu[:, 1], c=all_max_lyaps_gpu, cmap='coolwarm', alpha=0.8, s=15)
 
-            plt.colorbar(scatter, label="Max FTLE ($\log_{10}$ scale)")
+            plt.colorbar(scatter, label=r"Max FTLE ($\log_{10}$ scale)")
             plt.title('Bottleneck Activations Colored by FTLE Value')
             plt.xlabel('Neuron 1 Activation')
             plt.ylabel('Neuron 2 Activation')
@@ -439,7 +439,7 @@ class MNISTClassification:
             if num_lyap_exp == 1:
                 axes = [axes]
 
-            fig.suptitle('Classification Error and Predictive Uncertainty vs. $\lambda_i^{(L)}(\mathbf{x})$')
+            fig.suptitle(r'Classification Error and Predictive Uncertainty vs. $\lambda_i^{(L)}(\mathbf{x})$')
 
             for i, ax in enumerate(axes):
                 
@@ -454,11 +454,11 @@ class MNISTClassification:
                 binned_entropies = []
 
                 # Iterate through bins and calculate average error and entropy
-                for i in range(len(lambda_bins) - 1):
+                for j in range(len(lambda_bins) - 1):
                     lower_bound = lambda_bins[i]
                     upper_bound = lambda_bins[i+1]
                     
-                    if i == len(lambda_bins) - 2: # Include the max value in the last bin
+                    if j == len(lambda_bins) - 2: # Include the max value in the last bin
                         bin_indices = np.where((lambdas_i >= lower_bound) & (lambdas_i <= upper_bound))
                     else:
                         bin_indices = np.where((lambdas_i >= lower_bound) & (lambdas_i < upper_bound))
@@ -474,8 +474,8 @@ class MNISTClassification:
 
                 color_error = 'black'
                 ax.set_xlabel(r'$\lambda_i^{(L)}(\mathbf{x})$')
-                ax.set_ylabel('Test Error' +  '$(\%)$', color=color_error)
-                ax.plot(binned_lambda, binned_errors, color=color_error, label='Test Error' +  '$(\%)$')
+                ax.set_ylabel('Test Error' +  r'$(\%)$', color=color_error)
+                ax.plot(binned_lambda, binned_errors, color=color_error, label='Test Error' +  r'$(\%)$')
                 ax.tick_params(axis='y', labelcolor=color_error)
                 ax.set_ylim(bottom=0) # Error should not go below 0
 
