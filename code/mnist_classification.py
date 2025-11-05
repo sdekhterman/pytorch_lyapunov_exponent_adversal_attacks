@@ -237,7 +237,7 @@ class MNISTClassification:
             plt.savefig("mnist_2d_projection.png", dpi=600)
             plt.close()
         
-    def plot_error_and_entropy_vs_lambda(self, ensemble_models, num_lyap_exp = 2, bin_edges=50):
+    def plot_error_and_entropy_vs_lambda(self, ensemble_models, num_lyap_exp = 1, bin_edges=50):
         print("\n--- Generating Error and Entropy vs. Lambda_1 Plot ---")
         if not ensemble_models:
             print("No models provided for ensemble. Cannot generate plot.")
@@ -318,6 +318,11 @@ class MNISTClassification:
 
         # Plotting
         fig, axes = plt.subplots(num_lyap_exp, 1, figsize=(10, 4))
+
+        # If only one subplot, axes is not iterable — make it a list
+        if num_lyap_exp == 1:
+            axes = [axes]
+
         fig.suptitle('Classification Error and Predictive Uncertainty vs. $\lambda_i^{(L)}(\mathbf{x})$')
         for i, ax in enumerate(axes):
             color_error = 'black'
