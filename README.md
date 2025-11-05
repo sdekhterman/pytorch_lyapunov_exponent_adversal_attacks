@@ -8,8 +8,6 @@ As of writing the author plans to investidate if the FTLEs can be used to make b
 ## Installation
 I assumed that the Python virtual enviroment (used to keep python packages version need for the code to run from conflicting with what you have already installed) was created using the conda package. For install instuctions of conda see https://docs.conda.io/projects/conda/en/stable/user-guide/install/index.html. 
 
-This repositry also used PyTorch to train the deep neural network. If you have conflicts when installing the requirments.txt consider visiting https://pytorch.org/get-started/locally/ to get a version appropriate for your machine/ container.
-
 After installing conda, in a terminal copy the following set of commands 
 ```
 conda create --name lyap_exp_attacks
@@ -17,8 +15,9 @@ conda activate lyap_exp_attacks
 git clone https://github.com/sdekhterman/pytorch_lyapunov_exponent_adversal_attacks.git
 cd pytorch_lyapunov_exponent_adversal_attacks
 pip install -r requirements.txt
-pip install SciencePlots
 ```
+This repositry also used PyTorch to train the deep neural network. If you have conflicts when installing the requirments.txt consider visiting https://pytorch.org/get-started/locally/ to get a version appropriate for your machine/ container.
+
 ## Run Code
 After installing the code,
 ```
@@ -28,3 +27,4 @@ and run the main file of interest
 ```
 python3 mnist_classification.py
 ```
+where the 'desired_plot' is set set internally.
