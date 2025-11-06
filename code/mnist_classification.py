@@ -186,14 +186,14 @@ class MNISTClassification:
         self.batch_size       = batch_size
 
         if debug:
-            self.number_of_epochs = 2
+            self.number_of_epochs = 1
         
         transform         = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]) 
         train_dataset     = torchvision.datasets.MNIST(root='./data', train=True, transform=transform, download=True)
         test_dataset      = torchvision.datasets.MNIST(root='./data', train=False, transform=transform)
         
         if debug:
-            subset_indices = range(120)
+            subset_indices = range(100)
             test_dataset = Subset(test_dataset, subset_indices)
 
         self.train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=self.batch_size, shuffle=True)
@@ -219,6 +219,7 @@ class MNISTClassification:
 
         # lot_error_and_entropy_vs_lambda config
         self.epsilon = 1e-9 # for log stability
+        self.correlation_list = []
 
         # train_attack config
         self.numb_adversaila_examples = 5
@@ -259,13 +260,13 @@ class MNISTClassification:
             avg_loss = running_loss / n_total_steps
             train_losses.append(avg_loss)
 
-            _,_, model_accuracy_percent = self.test_model(model)
+            _,_, model_accuracy_percent = self.test_model_fast(model)
             test_accuracies.append(model_accuracy_percent)
 
             if (((epoch + 1) % self.epoch_loss_print_period == 0)):
                 print(f'Epoch [{epoch+1}/{self.number_of_epochs}], Loss: {avg_loss:.4f}, Accuracy: {model_accuracy_percent:.2f} %')
         
-        return model
+        return model  
 
     def test_model(self, model, num_lyap_exp = 1):
         """
@@ -309,6 +310,43 @@ class MNISTClassification:
         accuracy      = 100.0 * n_correct / n_samples
 
         return average_lyap, stddev_lyap, accuracy
+    
+    def test_model_fast(self, model):
+        """
+        Evaluates a model on the test dataset.
+        
+        Also computes the average and standard deviation of the top
+        Lyapunov exponent(s) across the entire test set.
+
+        Args:
+            model (nn.Module): The model to evaluate.
+            num_lyap_exp (int): The number of FTLEs to compute.
+
+        Returns:
+            tuple:
+                - torch.Tensor: Average FTLE(s) over the test set.
+                - torch.Tensor: Standard deviation of FTLE(s) over the test set.
+                - float: Test accuracy percentage.
+        """
+        model.eval()
+        n_correct  = 0
+        n_samples  = 0
+        
+        with torch.no_grad():
+            for images, labels in self.test_loader:
+                images      = images.reshape(self.reshape_size).to(self.device)
+                
+                labels  = labels.to(self.device)
+                outputs = model(images)
+                _, predicted = torch.max(outputs.data, 1)
+                n_correct += (predicted == labels).sum().item()
+                n_samples += labels.size(0)
+
+                # print(f"Total samples processed: {n_samples}")
+
+        accuracy = 100.0 * n_correct / n_samples
+
+        return 0, 0, accuracy
 
     def visualize_ftle_on_data_points(self):
         """
@@ -364,7 +402,7 @@ class MNISTClassification:
             plt.close()
             print("Plot saved. :)")
     
-    def plot_error_and_entropy_vs_lambda(self, ensemble_models, num_lyap_exp = 1, bin_edges=50):
+    def plot_error_and_entropy_vs_lambda(self, ensemble_models, num_lyap_exp = 1, bin_edges=50, consider_attack = False, attack_size = 0):
         """
         Generates a plot of test error and predictive entropy vs. FTLE (lambda).
 
@@ -382,7 +420,7 @@ class MNISTClassification:
             num_lyap_exp (int): The number of FTLEs to analyze (e.g., 1 for lambda_1).
             bin_edges (int): The number of bins to use for lambda.
         """
-        print("\n--- Generating Error and Entropy vs. Lambda_1 Plot ---")
+        print("\n--- Generating Error and Entropy vs. Lambda Plot ---")
         if not ensemble_models:
             print("No models provided for ensemble. Cannot generate plot.")
             return
@@ -392,6 +430,9 @@ class MNISTClassification:
         all_entropies = []
         softmax       = nn.Softmax(dim=1)
         
+        all_atk_lambdas   = []
+        all_atk_errors    = []
+        all_atk_entropies = []
 
         samples_processed = 0
         with torch.no_grad():
@@ -404,11 +445,20 @@ class MNISTClassification:
 
                 for model in ensemble_models:
                     model.eval()
+                    
                     lyap_exp = model.max_n_finite_time_lyapunov_exponents(images, num_lyap_exp)
                     batch_lambdas.append(lyap_exp.cpu().numpy())
                     outputs = model(images)
                     probs   = softmax(outputs)
                     batch_ensemble_probs.append(probs)
+
+                    if(consider_attack):
+                        lyap_exp = model.max_n_finite_time_lyapunov_exponents(images, num_lyap_exp)
+                        batch_lambdas.append(lyap_exp.cpu().numpy())
+                        outputs = model(images)
+                        probs   = softmax(outputs)
+                        batch_ensemble_probs.append(probs)
+                        attack_size
 
                     samples_processed += images.size(0)
                     print(f"Total samples processed: {samples_processed}")
@@ -416,6 +466,8 @@ class MNISTClassification:
                 # compute the mean lyapunov exponenet(s) and entropy across the ensamle of models, per image
                 avg_batch_lambda = np.mean(np.array(batch_lambdas), axis=0)
                 all_lambdas.extend(avg_batch_lambda)
+
+
                 ensemble_probs_for_batch =  torch.stack(batch_ensemble_probs)
                 avg_probs_per_image      =  torch.mean(ensemble_probs_for_batch, dim=0) 
                 entropies_per_image      = -torch.sum(avg_probs_per_image * torch.log(avg_probs_per_image + self.epsilon), dim=1)
@@ -455,8 +507,8 @@ class MNISTClassification:
 
                 # Iterate through bins and calculate average error and entropy
                 for j in range(len(lambda_bins) - 1):
-                    lower_bound = lambda_bins[i]
-                    upper_bound = lambda_bins[i+1]
+                    lower_bound = lambda_bins[j]
+                    upper_bound = lambda_bins[j+1]
                     
                     if j == len(lambda_bins) - 2: # Include the max value in the last bin
                         bin_indices = np.where((lambdas_i >= lower_bound) & (lambdas_i <= upper_bound))
@@ -474,8 +526,8 @@ class MNISTClassification:
 
                 color_error = 'black'
                 ax.set_xlabel(r'$\lambda_i^{(L)}(\mathbf{x})$')
-                ax.set_ylabel('Test Error' +  r'$(\%)$', color=color_error)
-                ax.plot(binned_lambda, binned_errors, color=color_error, label='Test Error' +  r'$(\%)$')
+                ax.set_ylabel('Error' +  r'$(\%)$', color=color_error)
+                ax.plot(binned_lambda, binned_errors, color=color_error, label='Error' +  r'$(\%)$')
                 ax.tick_params(axis='y', labelcolor=color_error)
                 ax.set_ylim(bottom=0) # Error should not go below 0
 
@@ -488,10 +540,18 @@ class MNISTClassification:
 
                 ax.grid(True, linestyle='--', alpha=0.6)
 
+                binned_lambda_array = np.array(binned_lambda)
+                binned_errors_array = np.array(binned_errors)
+                correlation_arg     = np.vstack([binned_lambda_array, binned_errors_array])
+                correlation_array   = np.corrcoef(correlation_arg)
+                self.correlation_list.append(correlation_array[0,1])
+                print(correlation_array[0,1])
+
             plt.savefig(self.err_ent_vs_lmbd_plot_path, dpi=600)
             plt.close()
         print("Plot saved. :)")
-        
+        print(self.correlation_list)
+
     def analyze_attacks(self, model, attack_sizes):
         """
         Runs adversarial attacks (FGSM) for various strengths and plots examples.
@@ -508,7 +568,7 @@ class MNISTClassification:
         all_examples = []
 
         for attack_size in attack_sizes:
-            acc, ex = self.test_attack(model, attack_size)
+            acc, ex, _, _ = self.test_attack(model, attack_size)
             accuracies.append(acc)
             all_examples.append(ex)
         with plt.style.context(["science"]):
@@ -546,7 +606,7 @@ class MNISTClassification:
                 print("\nNot enough adversarial examples found to display for that attack size.")
                 print("Try training the model for more epochs or increasing attack size.")
 
-    def test_attack(self, model, attack_size):
+    def test_attack(self, model, attack_size, num_lyap_exp=1):
         """
         Tests the model's accuracy under an FGSM adversarial attack.
 
@@ -560,9 +620,11 @@ class MNISTClassification:
                 - list: A list of (orig_pred, adv_pred, orig_img, adv_img)
                         tuples for successful attacks.
         """
+        model.eval() 
         n_correct    = 0
         adv_examples = []
-        model.eval() 
+        lyaps_list = []
+        
 
         for images, labels in self.test_loader:
             # compute gradients for Fast Gradient Sign Method (FGSM) attacks on input images
@@ -577,11 +639,15 @@ class MNISTClassification:
             _, init_predictions = torch.max(outputs.data, 1)
 
             # apply and evaluate FGSM attacks
-            perturbed_data      = self.fgsm_attack(images, attack_size, images_grads)
-            output_adv          = model(perturbed_data)
+            perturbed_images    = self.fgsm_attack(images, attack_size, images_grads)
+            output_adv          = model(perturbed_images)
             _, final_predictions = torch.max(output_adv.data, 1)
 
+            lyaps_batch = model.max_n_finite_time_lyapunov_exponents(perturbed_images, num_lyap_exp)
+            lyaps_list.append(lyaps_batch)
+
             n_correct += (final_predictions == labels).sum().item()
+
             for index in range(len(final_predictions)):
                 init_pred_item  = init_predictions[index].item()
                 final_pred_item = final_predictions[index].item()
@@ -592,15 +658,19 @@ class MNISTClassification:
                 
                 if (was_match and is_mismatch and (len(adv_examples) < self.numb_adversaila_examples)):
                     image_ref     = images.reshape(self.reshape_size).to(self.device)
-                    perturbed_ref = perturbed_data.reshape(self.reshape_size).to(self.device)
+                    perturbed_ref = perturbed_images.reshape(self.reshape_size).to(self.device)
                     adv_ex        = perturbed_ref[index].squeeze().detach().cpu().numpy()
                     orig_ex       = image_ref[index].squeeze().detach().cpu().numpy()
                     adv_examples.append((init_pred_item, final_pred_item, orig_ex, adv_ex))
+            
+        all_lyaps_gpu = torch.cat(lyaps_list, dim=0)
+        average_lyap  = torch.mean(all_lyaps_gpu, dim=0)
+        stddev_lyap   = torch.std(all_lyaps_gpu, dim=0)
 
         final_acc = n_correct / float(len(self.test_loader.dataset))
         print(f"Epsilon: {attack_size}\tTest Accuracy = {n_correct} / {len(self.test_loader.dataset)} = {final_acc:.4f}")
 
-        return final_acc, adv_examples
+        return final_acc, adv_examples, average_lyap, stddev_lyap
     
     def fgsm_attack(self, images, attack_size, image_grads):
         """
@@ -628,14 +698,15 @@ class DesiredPlot(Enum):
     STAT_TABLE = 5
 
 def main():
-    classifier = MNISTClassification(debug=True) # set debug flag to True if you want code to run in 1x minutes instead of 10x minutes
+    classifier = MNISTClassification(debug=False) # set debug flag to True if you want code to run in 1x minutes instead of 10x minutes
     
     # change as desired
-    num_models_averaged     = 2
+    num_models_averaged     = 3
     hidden_layer_sizes_list = range(10, 120, 20)
-    attack_sizes            = [0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
-    num_lyap_exp            = 3
+    attack_sizes            = [0.1, 0.2, 0.3, 0.4, 0.5]
+    num_lyap_exp            = 5
     desired_plot            =  DesiredPlot.STAT_TABLE #Prof Rainer Engelken try each of the options for this
+
     
 
     if desired_plot == DesiredPlot.FTLE_2D:
@@ -710,27 +781,63 @@ def main():
         average_eig_list = []
         std_eig_list     = []
         accuracy_list    = []
+        atk_average_eig_list = []
+        atk_std_eig_list     = []
+        atk_accuracy_list    = []
 
         for num in range(num_models_averaged):
             untrained_model   = TanhSoftmaxNet().to(classifier.device)
             trained_model     = classifier.train_model(untrained_model, title=f"Model {num+1}/{num_models_averaged} Training")
             average_eig, standard_dev_eig, accuracy = classifier.test_model(trained_model, num_lyap_exp)
             
+            sub_atk_average_eig_list = []
+            sub_atk_std_eig_list     = []
+            sub_atk_accuracy_list    = []
+            for attack_size in attack_sizes:
+                atk_accuracy, _, atk_average_lyap, atk_stddev_lyap = classifier.test_attack(trained_model, attack_size, num_lyap_exp)
+
+                sub_atk_average_eig_list.append(atk_average_lyap.tolist())
+                sub_atk_std_eig_list.append(atk_stddev_lyap.tolist())
+                sub_atk_accuracy_list.append(atk_accuracy)
+                
             average_eig_list.append(average_eig)
             std_eig_list.append(standard_dev_eig)
             accuracy_list.append(accuracy)
 
-        avg_acc             = sum(accuracy_list) / num_models_averaged
-        std_acc             = statistics.stdev(accuracy_list)
+            atk_average_eig_list.append(sub_atk_average_eig_list)
+            atk_std_eig_list.append(sub_atk_std_eig_list)
+            atk_accuracy_list.append(sub_atk_accuracy_list)
+            
+        avg_acc        = sum(accuracy_list) / num_models_averaged
+        std_acc        = statistics.stdev(accuracy_list)
+        atk_avg_tensor = torch.tensor(atk_accuracy_list)
+
         print(f'The average of {num_models_averaged} runs was an an average of {avg_acc} with a standard deviation of {std_acc} for the percent of pictures correctly classified.')
-        
-        average_eig_tensor = torch.stack(average_eig_list)
-        std_eig_tensor     = torch.stack(std_eig_list)
+        for i in range(len(attack_sizes)):
+            atk_avg_tensor_i = atk_avg_tensor[:,i]
+            avg_atk_acc      = atk_avg_tensor_i.mean().item()
+            std_atk_acc      = atk_avg_tensor_i.std().item()
+            print(f'The average of {num_models_averaged} runs was an an average of {avg_atk_acc} with a standard deviation of {std_atk_acc} for the percent of ATTACKED pictures correctly classified.')
+            print(f'Thats a percent difference of {(avg_atk_acc - avg_acc)/avg_acc} in the average and a percent difference of {(std_atk_acc - std_acc)/std_acc} from the regular to attacked images.')
+            
+        avg_eig_tensor         = torch.stack(average_eig_list)
+        std_eig_tensor         = torch.stack(std_eig_list)
+        atk_avg_atk_eig_tensor = torch.tensor(atk_average_eig_list)
+        atk_std_eig_tensor     = torch.tensor(atk_std_eig_list)
 
         for i in range(num_lyap_exp):
-            avg_avg_of_eigi     = average_eig_tensor[:,i].mean().item()
-            avg_std_dev_of_eigi = std_eig_tensor[    :,i].mean().item()
+            avg_avg_of_eigi     = avg_eig_tensor[:,i].mean().item()
+            avg_std_dev_of_eigi = std_eig_tensor[:,i].mean().item()
             print(f'The average of {num_models_averaged} runs was an an average of {avg_avg_of_eigi} with a standard deviation of {avg_std_dev_of_eigi} for mu{i+1}.')
 
+            for j in range(len(attack_sizes)):
+                avg_atk_avg_of_eigi     = atk_avg_atk_eig_tensor[:,j, i].mean().item()
+                avg_atk_std_dev_of_eigi = atk_std_eig_tensor[:,j,i].std().item()
+                print(f'The average of {num_models_averaged} runs was an an average of {avg_atk_avg_of_eigi} with a standard deviation of {avg_atk_std_dev_of_eigi} for mu{i+1} and attack size of {attack_sizes[j]}.')
+                print(f'Thats a percent difference of {(avg_atk_avg_of_eigi - avg_avg_of_eigi)/avg_avg_of_eigi} in the average and a percent difference of {(avg_atk_std_dev_of_eigi - avg_std_dev_of_eigi)/avg_std_dev_of_eigi} from the regular to attacked images.')
+
+
+
+        
 if __name__ == "__main__":
     main()
