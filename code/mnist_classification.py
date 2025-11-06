@@ -186,14 +186,14 @@ class MNISTClassification:
         self.batch_size       = batch_size
 
         if debug:
-            self.number_of_epochs = 2
+            self.number_of_epochs = 5
         
         transform         = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]) 
         train_dataset     = torchvision.datasets.MNIST(root='./data', train=True, transform=transform, download=True)
         test_dataset      = torchvision.datasets.MNIST(root='./data', train=False, transform=transform)
         
         if debug:
-            subset_indices = range(100)
+            subset_indices = range(1000)
             test_dataset = Subset(test_dataset, subset_indices)
 
         self.train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=self.batch_size, shuffle=True)
@@ -260,13 +260,13 @@ class MNISTClassification:
             avg_loss = running_loss / n_total_steps
             train_losses.append(avg_loss)
 
-            _,_, model_accuracy_percent = self.test_model(model)
+            _,_, model_accuracy_percent = self.test_model_fast(model)
             test_accuracies.append(model_accuracy_percent)
 
             if (((epoch + 1) % self.epoch_loss_print_period == 0)):
                 print(f'Epoch [{epoch+1}/{self.number_of_epochs}], Loss: {avg_loss:.4f}, Accuracy: {model_accuracy_percent:.2f} %')
         
-        return model
+        return model  
 
     def test_model(self, model, num_lyap_exp = 1):
         """
@@ -310,6 +310,43 @@ class MNISTClassification:
         accuracy      = 100.0 * n_correct / n_samples
 
         return average_lyap, stddev_lyap, accuracy
+    
+    def test_model_fast(self, model):
+        """
+        Evaluates a model on the test dataset.
+        
+        Also computes the average and standard deviation of the top
+        Lyapunov exponent(s) across the entire test set.
+
+        Args:
+            model (nn.Module): The model to evaluate.
+            num_lyap_exp (int): The number of FTLEs to compute.
+
+        Returns:
+            tuple:
+                - torch.Tensor: Average FTLE(s) over the test set.
+                - torch.Tensor: Standard deviation of FTLE(s) over the test set.
+                - float: Test accuracy percentage.
+        """
+        model.eval()
+        n_correct  = 0
+        n_samples  = 0
+        
+        with torch.no_grad():
+            for images, labels in self.test_loader:
+                images      = images.reshape(self.reshape_size).to(self.device)
+                
+                labels  = labels.to(self.device)
+                outputs = model(images)
+                _, predicted = torch.max(outputs.data, 1)
+                n_correct += (predicted == labels).sum().item()
+                n_samples += labels.size(0)
+
+                # print(f"Total samples processed: {n_samples}")
+
+        accuracy = 100.0 * n_correct / n_samples
+
+        return 0, 0, accuracy
 
     def visualize_ftle_on_data_points(self):
         """
@@ -456,8 +493,8 @@ class MNISTClassification:
 
                 # Iterate through bins and calculate average error and entropy
                 for j in range(len(lambda_bins) - 1):
-                    lower_bound = lambda_bins[i]
-                    upper_bound = lambda_bins[i+1]
+                    lower_bound = lambda_bins[j]
+                    upper_bound = lambda_bins[j+1]
                     
                     if j == len(lambda_bins) - 2: # Include the max value in the last bin
                         bin_indices = np.where((lambdas_i >= lower_bound) & (lambdas_i <= upper_bound))
@@ -493,16 +530,14 @@ class MNISTClassification:
                 binned_errors_array = np.array(binned_errors)
                 correlation_arg     = np.vstack([binned_lambda_array, binned_errors_array])
                 correlation_array   = np.corrcoef(correlation_arg)
-                self.correlation_list.append(correlation_array[1,1])
-
-                print(stop)
-
+                self.correlation_list.append(correlation_array[0,1])
+                print(correlation_array[0,1])
 
             plt.savefig(self.err_ent_vs_lmbd_plot_path, dpi=600)
             plt.close()
         print("Plot saved. :)")
         print(self.correlation_list)
-        
+
     def analyze_attacks(self, model, attack_sizes):
         """
         Runs adversarial attacks (FGSM) for various strengths and plots examples.
@@ -639,13 +674,13 @@ class DesiredPlot(Enum):
     STAT_TABLE = 5
 
 def main():
-    classifier = MNISTClassification(debug=True) # set debug flag to True if you want code to run in 1x minutes instead of 10x minutes
+    classifier = MNISTClassification(debug=False) # set debug flag to True if you want code to run in 1x minutes instead of 10x minutes
     
     # change as desired
-    num_models_averaged     = 2
+    num_models_averaged     = 5
     hidden_layer_sizes_list = range(10, 120, 20)
     attack_sizes            = [0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
-    num_lyap_exp            = 3
+    num_lyap_exp            = 5
     desired_plot            =  DesiredPlot.ENTROPY #Prof Rainer Engelken try each of the options for this
     
 
