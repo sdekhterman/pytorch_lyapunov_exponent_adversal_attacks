@@ -703,8 +703,8 @@ def main():
     # change as desired
     num_models_averaged     = 3
     hidden_layer_sizes_list = range(10, 120, 20)
-    attack_sizes            = [0.1, 0.2, 0.3]
-    num_lyap_exp            = 3
+    attack_sizes            = [0.1, 0.2]
+    num_lyap_exp            = 2
     desired_plot            =  DesiredPlot.STAT_TABLE #Prof Rainer Engelken try each of the options for this
 
     
