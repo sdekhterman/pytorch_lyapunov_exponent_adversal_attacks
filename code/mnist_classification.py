@@ -826,7 +826,7 @@ class DesiredPlot(Enum):
     STAT_TABLE     = 5
 
 def main():
-    classifier = MNISTClassification(debug=False) # set debug flag to True if you want code to run in 1x minutes instead of 10x minutes
+    classifier = MNISTClassification(debug=True) # set debug flag to True if you want code to run in 1x minutes instead of 10x minutes
     
     # change as desired
     num_models_averaged     = 5
