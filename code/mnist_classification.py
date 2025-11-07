@@ -389,6 +389,7 @@ class MNISTClassification:
         all_points_gpu    = torch.cat(points_list, dim=0).cpu().numpy()
 
         with plt.style.context(["science"]):
+            plt.rcParams['text.usetex'] = False  # <-- ADD THIS LINE
             plt.figure(figsize=(6, 4))
 
             scatter = plt.scatter(all_points_gpu[:, 0], all_points_gpu[:, 1], c=all_max_lyaps_gpu, cmap='coolwarm', alpha=0.8, s=15)
@@ -515,6 +516,7 @@ class MNISTClassification:
             all_lambdas = all_lambdas.reshape(-1, 1)
             all_atk_lambdas = all_atk_lambdas.reshape(-1, 1)
         with plt.style.context(["science"]):
+            plt.rcParams['text.usetex'] = False  # <-- ADD THIS LINE
             fig, axes = plt.subplots(num_lyap_exp, 1, figsize=(10, 6))
 
             # If only one subplot, axes is not iterable — make it a list
@@ -696,6 +698,7 @@ class MNISTClassification:
             accuracies.append(acc)
             all_examples.append(ex)
         with plt.style.context(["science"]):
+            plt.rcParams['text.usetex'] = False  # <-- ADD THIS LINE
             plt.figure(figsize=(10, 8))
 
             try:
@@ -822,7 +825,7 @@ class DesiredPlot(Enum):
     STAT_TABLE     = 5
 
 def main():
-    classifier = MNISTClassification(debug=False) # set debug flag to True if you want code to run in 1x minutes instead of 10x minutes
+    classifier = MNISTClassification(debug=True) # set debug flag to True if you want code to run in 1x minutes instead of 10x minutes
     
     # change as desired
     num_models_averaged     = 5
@@ -882,6 +885,7 @@ def main():
             avg_std_dev_eig1_list.append(avg_std_dev_eig1)
         
         with plt.style.context(["science"]):
+            plt.rcParams['text.usetex'] = False  # <-- ADD THIS LINE
             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 2))
             ax1.semilogx(hidden_layer_sizes_list,    avg_avg_eig1_list, label='Average Accuracy')
             ax2.semilogx(hidden_layer_sizes_list, avg_std_dev_eig1_list, label='Std Dev of Accuracy')
