@@ -15,9 +15,11 @@ conda activate lyap_exp_attacks
 git clone https://github.com/sdekhterman/pytorch_lyapunov_exponent_adversal_attacks.git
 conda install -c conda-forge scienceplots
 ```
-and then copy the following into the same terminal
 ```
 pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu126
+```
+```
+conda install -c conda-forge scikit-learn
 ```
 If you have conflicts when installing/running the version of pytorch listed consider visiting https://pytorch.org/get-started/locally/ to get a version appropriate for your machine/ container.
 

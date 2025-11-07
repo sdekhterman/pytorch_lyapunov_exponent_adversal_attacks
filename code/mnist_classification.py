@@ -322,7 +322,6 @@ class MNISTClassification:
 
         Args:
             model (nn.Module): The model to evaluate.
-            num_lyap_exp (int): The number of FTLEs to compute.
 
         Returns:
             tuple:
@@ -407,21 +406,30 @@ class MNISTClassification:
     
     def plot_error_and_entropy_vs_lambda(self, ensemble_models, num_lyap_exp = 1, bin_edges=50, attack_size = 0):
         """
-        Generates a plot of test error and predictive entropy vs. FTLE (lambda).
+        Generates a plot of test error and predictive entropy vs. FTLE (lambda)
+        for both clean and (optionally) adversarially attacked data.
 
-        This function processes the test set, and for each image, it calculates:
+        This function processes the test set. For each image, it calculates:
         1. The average FTLE (lambda) across an ensemble of models.
         2. The average predictive probability distribution across the ensemble.
         3. The predictive entropy (uncertainty) from this average distribution.
         4. The ensemble's prediction error (if the max avg. prob. is wrong).
 
-        It then bins the data by the average lambda value and plots the
-        mean error and mean entropy within each bin.
+        If `attack_size` is non-zero, it also performs an FGSM attack on
+        the images and calculates these same four metrics for the
+        perturbed data.
+
+        It then bins the clean data and attacked data separately by their
+        respective lambda values and plots the mean error and mean entropy
+        for both sets on the same axes for comparison.
 
         Args:
             ensemble_models (list[nn.Module]): A list of trained models.
             num_lyap_exp (int): The number of FTLEs to analyze (e.g., 1 for lambda_1).
-            bin_edges (int): The number of bins to use for lambda.
+            bin_edges (int): The number of bins to use for bucketing lambda values.
+            attack_size (float, optional): The epsilon value for the FGSM
+                attack. If 0 (default), no attack is performed and only
+                clean data is processed and plotted.
         """
         print("\n--- Generating Error and Entropy vs. Lambda Plot ---")
         if not ensemble_models:
@@ -736,17 +744,34 @@ class MNISTClassification:
 
     def test_attack(self, model, attack_size, num_lyap_exp=1):
         """
-        Tests the model's accuracy under an FGSM adversarial attack.
+        Tests the model's accuracy under an FGSM adversarial attack and
+        computes FTLE statistics for the attacked images.
+
+        This function iterates through the test set, performs an FGSM attack
+        on each batch, and then:
+        1. Calculates the model's classification accuracy on the perturbed images.
+        2. Gathers a list of successful adversarial examples (where the
+           original prediction was correct, but the attacked one was wrong).
+        3. Computes the Finite-Time Lyapunov Exponents (FTLEs) for all
+           perturbed images.
 
         Args:
             model (nn.Module): The model to attack.
             attack_size (float): The epsilon value (strength) of the attack.
+            num_lyap_exp (int, optional): The number of FTLEs to compute for
+                each attacked image. Defaults to 1.
 
         Returns:
             tuple:
-                - float: The model's accuracy on the perturbed dataset.
+                - float: The model's accuracy on the perturbed dataset (0.0 to 1.0).
                 - list: A list of (orig_pred, adv_pred, orig_img, adv_img)
                         tuples for successful attacks.
+                - torch.Tensor: A 1D tensor containing the average (mean)
+                                of each of the `num_lyap_exp` FTLEs,
+                                averaged across the entire test set.
+                - torch.Tensor: A 1D tensor containing the standard deviation
+                                of each of the `num_lyap_exp` FTLEs,
+                                calculated across the entire test set.
         """
         model.eval() 
         n_correct    = 0
@@ -830,11 +855,11 @@ def main():
     
     # change as desired
     num_models_averaged     = 5
-    hidden_layer_sizes_list = range(10, 120, 20)
+    hidden_layer_sizes_list = range(10, 120, 50)
     attack_sizes            = [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
     num_lyap_exp            = 3
-    desired_plot            =  DesiredPlot.ATTACK #Prof Rainer Engelken try each of the options for this
-    entropy_attack          = 0.2 # set to zero for no attack plots
+    desired_plot            =  DesiredPlot.STAT_TABLE #Prof Rainer Engelken try each of the options for this
+    entropy_attack          = 0.2                  # set to zero for no attack plots
 
     if desired_plot == DesiredPlot.FTLE_2D:
         original_model            = TanhSoftmaxNet().to(classifier.device)
