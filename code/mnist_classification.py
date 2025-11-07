@@ -215,6 +215,7 @@ class MNISTClassification:
 
         # training_model config
         self.reshape_size = (-1, 28 * 28)
+        self.unreshape_size = (-1, 28, 28)
         self.epoch_loss_print_period = 5
 
         # lot_error_and_entropy_vs_lambda config
@@ -702,7 +703,7 @@ class MNISTClassification:
             plt.figure(figsize=(10, 8))
 
             try:
-                examples_to_show = all_examples[3] #TODO have this update based on the list size
+                examples_to_show = all_examples[2] #TODO have this update based on the list size
                 cnt = 0
                 for i in range(len(examples_to_show)):
                     cnt += 1
@@ -784,8 +785,8 @@ class MNISTClassification:
                 is_mismatch = (final_pred_item != label_item)
                 
                 if (was_match and is_mismatch and (len(adv_examples) < self.numb_adversaila_examples)):
-                    image_ref     = images.reshape(self.reshape_size).to(self.device)
-                    perturbed_ref = perturbed_images.reshape(self.reshape_size).to(self.device)
+                    image_ref     = images.reshape(self.unreshape_size).to(self.device)
+                    perturbed_ref = perturbed_images.reshape(self.unreshape_size).to(self.device)
                     adv_ex        = perturbed_ref[index].squeeze().detach().cpu().numpy()
                     orig_ex       = image_ref[index].squeeze().detach().cpu().numpy()
                     adv_examples.append((init_pred_item, final_pred_item, orig_ex, adv_ex))
@@ -825,14 +826,14 @@ class DesiredPlot(Enum):
     STAT_TABLE     = 5
 
 def main():
-    classifier = MNISTClassification(debug=True) # set debug flag to True if you want code to run in 1x minutes instead of 10x minutes
+    classifier = MNISTClassification(debug=False) # set debug flag to True if you want code to run in 1x minutes instead of 10x minutes
     
     # change as desired
     num_models_averaged     = 5
     hidden_layer_sizes_list = range(10, 120, 20)
-    attack_sizes            = [0.1, 0.2]
+    attack_sizes            = [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
     num_lyap_exp            = 3
-    desired_plot            =  DesiredPlot.ENTROPY #Prof Rainer Engelken try each of the options for this
+    desired_plot            =  DesiredPlot.ATTACK #Prof Rainer Engelken try each of the options for this
     entropy_attack          = 0.2 # set to zero for no attack plots
 
     if desired_plot == DesiredPlot.FTLE_2D:
