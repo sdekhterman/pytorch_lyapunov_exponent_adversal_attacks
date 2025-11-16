@@ -3,12 +3,12 @@
 
 This was done to check that the computation of the Finite-Time Lyapunov Exponents (FTLEs) was implemented correctly. 
 
-As of writing the author plans to investidate if the FTLEs can be used to make better adversarial attacks.  
+As of writing, the author plans to investigate whether the FTLEs can be used to make better adversarial attacks.  
 
 ## Installation
-I assumed that the Python virtual enviroment (used to keep python packages versions needed for the code to run from conflicting with what you have already installed) was created using the conda package. For install instuctions of conda see https://docs.conda.io/projects/conda/en/stable/user-guide/install/index.html. 
+I assumed that the Python virtual environment (used to keep Python packages versions needed for the code to run from conflicting with what you have already installed) was created using the conda package. For installation instructions of conda, see https://docs.conda.io/projects/conda/en/stable/user-guide/install/index.html. 
 
-After installing conda, in a terminal copy the following set of commands 
+After installing conda, in a terminal, copy the following set of commands 
 ```
 conda create --name lyap_exp_attacks
 conda activate lyap_exp_attacks
@@ -21,7 +21,7 @@ pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu12
 ```
 conda install -c conda-forge scikit-learn
 ```
-If you have conflicts when installing/running the version of pytorch listed consider visiting https://pytorch.org/get-started/locally/ to get a version appropriate for your machine/ container.
+If you have conflicts when installing/running the version of PyTorch listed, consider visiting https://pytorch.org/get-started/locally/ to get a version appropriate for your machine/ container.
 
 ## Run Code
 After installing the code,
