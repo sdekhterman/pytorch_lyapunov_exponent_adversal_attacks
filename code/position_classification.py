@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 import os
 
-
 class DeepTanhNet(nn.Module):
     """
     Deep fully-connected neural network using Tanh activations.
@@ -96,10 +95,9 @@ class DeepTanhNet(nn.Module):
         cauchy_green_tensor = torch.transpose(jacobian, 1, 2) @ jacobian
         singular_values = torch.linalg.svdvals(cauchy_green_tensor)
         max_singular_values = singular_values[:, 0]
-        max_lyapunov_exponents = torch.log10(max_singular_values)
+        max_lyapunov_exponents = torch.log(max_singular_values)/2
 
         return max_lyapunov_exponents
-
 
 class PositionClassifcation:
     """
@@ -371,6 +369,7 @@ def main():
     pos_class_object.train_model()
     pos_class_object.plot_classification()
     pos_class_object.plot_finite_time_lyapunov_exponents()
+
 
 if __name__=="__main__":
     main()
