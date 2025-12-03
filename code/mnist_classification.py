@@ -11,6 +11,7 @@ import os
 from enum import Enum
 from torch.utils.data import Subset
 import scienceplots
+import random
 
 class TanhSoftmaxNet(nn.Module):
     """
@@ -109,10 +110,10 @@ class TanhSoftmaxNet(nn.Module):
         cauchy_green_tensor = torch.transpose(jacobian, 1, 2) @ jacobian
         singular_values = torch.linalg.svdvals(cauchy_green_tensor)
         max_singular_values = singular_values[:, 0:num_lyap_exp]
-        max_lyapunov_exponents = torch.log10(max_singular_values)
+        max_lyapunov_exponents = torch.log(max_singular_values)
         
         number_of_hidden_layers_tensor = torch.tensor(self.numb_hidden_layers, dtype=torch.float64, device=max_lyapunov_exponents.device)
-        output = max_lyapunov_exponents / number_of_hidden_layers_tensor
+        output = max_lyapunov_exponents / (2*number_of_hidden_layers_tensor)
         output = torch.where(torch.isfinite(output), output, torch.zeros_like(output))
 
         return output
@@ -168,7 +169,7 @@ class MNISTClassification:
     FTLE calculation, adversarial attack generation (FGSM), and
     plotting/visualization of results.
     """
-    def __init__(self, learning_rate: float = 5e-3, momentum: float = 0.9, number_of_epochs: int = 25, batch_size: int = 64, debug: bool = False) -> None:
+    def __init__(self, learning_rate: float = 3e-3, momentum: float = 0.9, number_of_epochs: int = 25, batch_size: int = 64, debug: bool = False) -> None:
         """
         Initializes the MNIST workflow manager.
 
@@ -188,7 +189,7 @@ class MNISTClassification:
         if debug:
             self.number_of_epochs = 1
         
-        transform         = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]) 
+        transform         = transforms.Compose([transforms.ToTensor()]) 
         train_dataset     = torchvision.datasets.MNIST(root='./data', train=True, transform=transform, download=True)
         test_dataset      = torchvision.datasets.MNIST(root='./data', train=False, transform=transform)
         
@@ -212,10 +213,11 @@ class MNISTClassification:
         self.acc_vs_num_plot_path      = my_path_parent + "/images/accuracy_vs_num.png"
         self.mnist_2d_proj_plot_path   = my_path_parent + "/images/mnist_2d_projection.png"
         self.err_ent_vs_lmbd_plot_path = my_path_parent + "/images/error_entropy_vs_lambda.png"
+        self.training_acc_plot_path    = my_path_parent + "/images/training_acc.png"
 
         # training_model config
-        self.reshape_size = (-1, 28 * 28)
-        self.unreshape_size = (-1, 28, 28)
+        self.reshape_size            = (-1, 28 * 28)
+        self.unreshape_size          = (-1, 28, 28)
         self.epoch_loss_print_period = 5
 
         # lot_error_and_entropy_vs_lambda config
@@ -225,6 +227,20 @@ class MNISTClassification:
 
         # train_attack config
         self.numb_adversaila_examples = 5
+
+        self.set_seed()
+
+    def set_seed(self, seed: int = 42) -> None:
+        """
+        Sets the seed for reproducible training across PyTorch, NumPy, and Python.
+        """
+        random.seed(seed)                         # Python random module
+        np.random.seed(seed)                      # NumPy random module
+        torch.manual_seed(seed)                   # PyTorch CPU
+        torch.cuda.manual_seed(seed)              # PyTorch GPU
+        torch.cuda.manual_seed_all(seed)          # If multiple GPUs
+        torch.backends.cudnn.deterministic = True # Ensure deterministic behavior
+        torch.backends.cudnn.benchmark = False    # Disable CuDNN auto-tuner for reproducibility
 
     def train_model(self, model, title="Training Phase"):
         """
@@ -240,7 +256,6 @@ class MNISTClassification:
         print(f"--- Starting: {title} ---")
         optimizer = optim.SGD(filter(lambda p: p.requires_grad, model.parameters()),lr=self.learning_rate, momentum=self.momentum)
         
-        train_losses    = []
         test_accuracies = []
         n_total_steps   = len(self.train_loader)
 
@@ -260,7 +275,6 @@ class MNISTClassification:
                 running_loss += loss.item()
 
             avg_loss = running_loss / n_total_steps
-            train_losses.append(avg_loss)
 
             _,_, model_accuracy_percent = self.test_model_fast(model)
             test_accuracies.append(model_accuracy_percent)
@@ -268,7 +282,7 @@ class MNISTClassification:
             if (((epoch + 1) % self.epoch_loss_print_period == 0)):
                 print(f'Epoch [{epoch+1}/{self.number_of_epochs}], Loss: {avg_loss:.4f}, Accuracy: {model_accuracy_percent:.2f} %')
         
-        return model  
+        return model, test_accuracies  
 
     def test_model(self, model, num_lyap_exp = 1):
         """
@@ -392,9 +406,9 @@ class MNISTClassification:
             plt.rcParams['text.usetex'] = False  # <-- ADD THIS LINE
             plt.figure(figsize=(6, 4))
 
-            scatter = plt.scatter(all_points_gpu[:, 0], all_points_gpu[:, 1], c=all_max_lyaps_gpu, cmap='coolwarm', alpha=0.8, s=15)
+            scatter = plt.scatter(all_points_gpu[:, 0], all_points_gpu[:, 1], c=all_max_lyaps_gpu, cmap='coolwarm', alpha=0.8, s=1)
 
-            plt.colorbar(scatter, label=r"Max FTLE ($\log_{10}$ scale)")
+            plt.colorbar(scatter, label=r"Max FTLE ($\ln$ scale)")
             plt.title('Bottleneck Activations Colored by FTLE Value')
             plt.xlabel('Neuron 1 Activation')
             plt.ylabel('Neuron 2 Activation')
@@ -849,22 +863,40 @@ class DesiredPlot(Enum):
     AVERAGE        = 3
     ATTACK         = 4
     STAT_TABLE     = 5
+    TRAINING       = 6
 
 def main():
-    classifier = MNISTClassification(debug=True) # set debug flag to True if you want code to run in 1x minutes instead of 10x minutes
+    classifier = MNISTClassification(debug=False) # set debug flag to True if you want code to run in 1x minutes instead of 10x minutes
     
     # change as desired
+    desired_plot            = DesiredPlot.FTLE_2D #Prof Rainer Engelken try each of the options for this
     num_models_averaged     = 5
     hidden_layer_sizes_list = range(10, 120, 50)
     attack_sizes            = [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
     num_lyap_exp            = 3
-    desired_plot            =  DesiredPlot.STAT_TABLE #Prof Rainer Engelken try each of the options for this
     entropy_attack          = 0.2                  # set to zero for no attack plots
 
+    if desired_plot == DesiredPlot.TRAINING:                
+        classifier.number_of_epochs = 200
+        model                       = TanhSoftmaxNet().to(classifier.device)
+        _, train_losses             = classifier.train_model(model, title="Phase 1: Original Model Training")
+        with plt.style.context(["science"]):
+            plt.rcParams['text.usetex'] = False  # <-- ADD THIS LINE
+
+            plt.figure(figsize=(8,5))
+            plt.plot(range(1, len(train_losses)+1), train_losses)
+            plt.xlabel('Epoch')
+            plt.ylabel('Classifcation Accuracy')
+            plt.title('Classifcation Accuracy per Epoch')
+            plt.grid(True)
+            plt.savefig(classifier.training_acc_plot_path, dpi=600)
+            plt.close()
+            print("Plot saved. :)")
+
     if desired_plot == DesiredPlot.FTLE_2D:
-        original_model            = TanhSoftmaxNet().to(classifier.device)
-        classifier.original_model = original_model
-        trained_original_model    = classifier.train_model(original_model, title="Phase 1: Original Model Training")
+        original_model               = TanhSoftmaxNet().to(classifier.device)
+        classifier.original_model    = original_model
+        trained_original_model, _    = classifier.train_model(original_model, title="Phase 1: Original Model Training")
 
         # last layer not included since that's the classification layer
         feature_extractor = trained_original_model.network[:-1]
@@ -873,16 +905,16 @@ def main():
         for param in feature_extractor.parameters():
             param.requires_grad = False
 
-        bottleneck_model            = BottleneckNet(feature_extractor).to(classifier.device)
-        classifier.bottleneck_model = classifier.train_model(bottleneck_model, title="Phase 2: Bottleneck Fine-Tuning")
+        bottleneck_model                = BottleneckNet(feature_extractor).to(classifier.device)
+        classifier.bottleneck_model, _  = classifier.train_model(bottleneck_model, title="Phase 2: Bottleneck Fine-Tuning")
         classifier.visualize_ftle_on_data_points()
     
     if desired_plot == DesiredPlot.ENTROPY:
         ensemble_models = []
         for num in range(num_models_averaged):
             print(f"\n--- Training Ensemble Model {num+1}/{num_models_averaged} ---")
-            untrained_model = TanhSoftmaxNet().to(classifier.device)
-            trained_model   = classifier.train_model(untrained_model, title=f"Ensemble Model {num+1} Training")
+            untrained_model     = TanhSoftmaxNet().to(classifier.device)
+            trained_model ,_    = classifier.train_model(untrained_model, title=f"Ensemble Model {num+1} Training")
             ensemble_models.append(trained_model)
         
         classifier.plot_error_and_entropy_vs_lambda(ensemble_models, num_lyap_exp, attack_size=entropy_attack)
@@ -898,7 +930,7 @@ def main():
 
             for num in range(num_models_averaged):
                 untrained_model   = TanhSoftmaxNet(hidden_layer_size = hidden_layer_size).to(classifier.device)
-                trained_model     = classifier.train_model(untrained_model, title=f"Model {num+1}/{num_models_averaged} Training")
+                trained_model ,_  = classifier.train_model(untrained_model, title=f"Model {num+1}/{num_models_averaged} Training")
                 average_eig1, standard_dev_eig1, _ = classifier.test_model(trained_model)
                 
                 average_eig1_size_i_list.append(average_eig1.item())
@@ -926,8 +958,8 @@ def main():
             print("Plot saved. :)")
 
     if desired_plot == DesiredPlot.ATTACK:
-        untrained_model = TanhSoftmaxNet().to(classifier.device)
-        trained_model   = classifier.train_model(untrained_model, title="Phase 1: Model Training")
+        untrained_model  = TanhSoftmaxNet().to(classifier.device)
+        trained_model ,_ = classifier.train_model(untrained_model, title="Phase 1: Model Training")
         classifier.analyze_attacks(trained_model, attack_sizes)
 
     if desired_plot == DesiredPlot.STAT_TABLE:
@@ -940,7 +972,7 @@ def main():
 
         for num in range(num_models_averaged):
             untrained_model   = TanhSoftmaxNet().to(classifier.device)
-            trained_model     = classifier.train_model(untrained_model, title=f"Model {num+1}/{num_models_averaged} Training")
+            trained_model ,_  = classifier.train_model(untrained_model, title=f"Model {num+1}/{num_models_averaged} Training")
             average_eig, standard_dev_eig, accuracy = classifier.test_model(trained_model, num_lyap_exp)
             
             sub_atk_average_eig_list = []
@@ -988,8 +1020,6 @@ def main():
                 avg_atk_std_dev_of_eigi = atk_std_eig_tensor[:,j,i].std().item()
                 print(f'The average of {num_models_averaged} runs was an an average of {avg_atk_avg_of_eigi} with a standard deviation of {avg_atk_std_dev_of_eigi} for mu{i+1} and attack size of {attack_sizes[j]}.')
                 print(f'Thats a percent difference of {(avg_atk_avg_of_eigi - avg_avg_of_eigi)/avg_avg_of_eigi} in the average and a percent difference of {(avg_atk_std_dev_of_eigi - avg_std_dev_of_eigi)/avg_std_dev_of_eigi} from the regular to attacked images.')
-
-
 
         
 if __name__ == "__main__":
