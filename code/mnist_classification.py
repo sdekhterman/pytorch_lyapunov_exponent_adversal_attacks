@@ -214,6 +214,7 @@ class MNISTClassification:
         self.acc_vs_num_plot_path      = my_path_parent + "/images/accuracy_vs_num.png"
         self.mnist_2d_proj_plot_path   = my_path_parent + "/images/mnist_2d_projection.png"
         self.err_ent_vs_lmbd_plot_path = my_path_parent + "/images/error_entropy_vs_lambda.png"
+        self.err_ent_vs_lmbd_plot_path_atk = my_path_parent + "/images/error_entropy_vs_lambda_atk.png"
         self.training_acc_plot_path    = my_path_parent + "/images/training_acc.png"
 
         # training_model config
@@ -590,288 +591,263 @@ class MNISTClassification:
         print("Plot saved. :)")
         print(self.correlation_list)
 
-    # def plot_error_and_entropy_vs_lambda_atk(self, ensemble_models, num_lyap_exp = 1, bin_edges=50, attack_size = 0):
-    #     """
-    #     Generates a plot of test error and predictive entropy vs. FTLE (lambda)
-    #     for both clean and (optionally) adversarially attacked data.
+    def plot_error_and_entropy_vs_lambda_atk(self, ensemble_models, num_lyap_exp = 1, bin_edges=50, attack_size = 0):
+        """
+        Generates a plot of test error and predictive entropy vs. FTLE (lambda)
+        for both clean and (optionally) adversarially attacked data.
 
-    #     This function processes the test set. For each image, it calculates:
-    #     1. The average FTLE (lambda) across an ensemble of models.
-    #     2. The average predictive probability distribution across the ensemble.
-    #     3. The predictive entropy (uncertainty) from this average distribution.
-    #     4. The ensemble's prediction error (if the max avg. prob. is wrong).
+        This function processes the test set. For each image, it calculates:
+        1. The average FTLE (lambda) across an ensemble of models.
+        2. The average predictive probability distribution across the ensemble.
+        3. The predictive entropy (uncertainty) from this average distribution.
+        4. The ensemble's prediction error (if the max avg. prob. is wrong).
 
-    #     If `attack_size` is non-zero, it also performs an FGSM attack on
-    #     the images and calculates these same four metrics for the
-    #     perturbed data.
+        If `attack_size` is non-zero, it also performs an FGSM attack on
+        the images and calculates these same four metrics for the
+        perturbed data.
 
-    #     It then bins the clean data and attacked data separately by their
-    #     respective lambda values and plots the mean error and mean entropy
-    #     for both sets on the same axes for comparison.
+        It then bins the clean data and attacked data separately by their
+        respective lambda values and plots the mean error and mean entropy
+        for both sets on the same axes for comparison.
 
-    #     Args:
-    #         ensemble_models (list[nn.Module]): A list of trained models.
-    #         num_lyap_exp (int): The number of FTLEs to analyze (e.g., 1 for lambda_1).
-    #         bin_edges (int): The number of bins to use for bucketing lambda values.
-    #         attack_size (float, optional): The epsilon value for the FGSM
-    #             attack. If 0 (default), no attack is performed and only
-    #             clean data is processed and plotted.
-    #     """
-    #     print("\n--- Generating Error and Entropy vs. Lambda Plot ---")
-    #     if not ensemble_models:
-    #         print("No models provided for ensemble. Cannot generate plot.")
-    #         return
+        Args:
+            ensemble_models (list[nn.Module]): A list of trained models.
+            num_lyap_exp (int): The number of FTLEs to analyze (e.g., 1 for lambda_1).
+            bin_edges (int): The number of bins to use for bucketing lambda values.
+            attack_size (float, optional): The epsilon value for the FGSM
+                attack. If 0 (default), no attack is performed and only
+                clean data is processed and plotted.
+        """
+        print("\n--- Generating Error and Entropy vs. Lambda Plot ---")
+        if not ensemble_models:
+            print("No models provided for ensemble. Cannot generate plot.")
+            return
 
-    #     all_lambdas   = []
-    #     all_errors    = []
-    #     all_entropies = []
-    #     softmax       = nn.Softmax(dim=1)
+        all_lambdas   = []
+        all_errors    = []
+
+        softmax       = nn.Softmax(dim=1)
         
-    #     all_atk_lambdas   = []
-    #     all_atk_errors    = []
-    #     all_atk_entropies = []
+        all_atk_lambdas   = []
+        all_atk_errors    = []
 
-    #     samples_processed = 0
-    #     # with torch.no_grad():
-    #     for images, labels in self.test_loader:
-    #         images = images.reshape(self.reshape_size).to(self.device)
-    #         labels = labels.to(self.device)
+        samples_processed = 0
+        # with torch.no_grad():
+        for images, labels in self.test_loader:
+            images = images.reshape(self.reshape_size).to(self.device)
+            labels = labels.to(self.device)
 
-    #         batch_lambdas            = []
-    #         batch_ensemble_probs     = []
-    #         atk_batch_lambdas        = []
-    #         atk_batch_ensemble_probs = []
+            batch_lambdas            = []
+            batch_ensemble_probs     = []
+            atk_batch_lambdas        = []
+            atk_batch_ensemble_probs = []
 
-    #         for model in ensemble_models:
-    #             model.eval()
+            for model in ensemble_models:
+                model.eval()
                 
-    #             lyap_exp = model.max_n_finite_time_lyapunov_exponents(images, num_lyap_exp)
-    #             batch_lambdas.append(lyap_exp.cpu().detach().numpy())
-    #             outputs = model(images)
-    #             probs   = softmax(outputs)
-    #             batch_ensemble_probs.append(probs)
+                lyap_exp = model.max_n_finite_time_lyapunov_exponents(images, num_lyap_exp)
+                batch_lambdas.append(lyap_exp.cpu().detach().numpy())
+                outputs = model(images)
+                probs   = softmax(outputs)
+                batch_ensemble_probs.append(probs)
 
-    #             if(attack_size != 0):
-    #                 images.requires_grad = True
-    #                 outputs = model(images)
-    #                 loss    = self.criterion(outputs, labels)
-    #                 model.zero_grad()
-    #                 loss.backward()
-    #                 images_grads        = images.grad.data
+                if(attack_size != 0):
+                    images.requires_grad = True
+                    outputs = model(images)
+                    loss    = self.criterion(outputs, labels)
+                    model.zero_grad()
+                    loss.backward()
+                    images_grads        = images.grad.data
 
-    #                 # apply and evaluate FGSM attacks
-    #                 perturbed_images    = self.fgsm_attack(images, attack_size, images_grads)
-    #                 output_adv          = model(perturbed_images)
+                    # apply and evaluate FGSM attacks
+                    perturbed_images    = self.fgsm_attack(images, attack_size, images_grads)
+                    output_adv          = model(perturbed_images)
 
-    #                 lyaps_batch = model.max_n_finite_time_lyapunov_exponents(perturbed_images, num_lyap_exp)
-    #                 atk_batch_lambdas.append(lyaps_batch.cpu().detach().numpy())
+                    lyaps_batch = model.max_n_finite_time_lyapunov_exponents(perturbed_images, num_lyap_exp)
+                    atk_batch_lambdas.append(lyaps_batch.cpu().detach().numpy())
 
-    #                 atk_probs   = softmax(output_adv)
-    #                 atk_batch_ensemble_probs.append(atk_probs)
+                    atk_probs   = softmax(output_adv)
+                    atk_batch_ensemble_probs.append(atk_probs)
 
-    #             samples_processed += images.size(0)
-    #             print(f"Total samples processed: {samples_processed}")
+                samples_processed += images.size(0)
+                print(f"Total samples processed: {samples_processed}")
 
-    #         # compute the mean lyapunov exponenet(s) and entropy across the ensamle of models, per image
-    #         avg_batch_lambda = np.mean(np.array(batch_lambdas), axis=0)
-    #         all_lambdas.extend(avg_batch_lambda)
+            # compute the mean lyapunov exponenet(s) and entropy across the ensamle of models, per image
+            avg_batch_lambda = np.mean(np.array(batch_lambdas), axis=0)
+            all_lambdas.extend(avg_batch_lambda)
 
-    #         atk_avg_batch_lambda = np.mean(np.array(atk_batch_lambdas), axis=0)
-    #         all_atk_lambdas.extend(atk_avg_batch_lambda)
-
-
-    #         ensemble_probs_for_batch =  torch.stack(batch_ensemble_probs)
-    #         avg_probs_per_image      =  torch.mean(ensemble_probs_for_batch, dim=0) 
-    #         entropies_per_image      = -torch.sum(avg_probs_per_image * torch.log(avg_probs_per_image + self.epsilon), dim=1)
-    #         all_entropies.extend(entropies_per_image.cpu().detach().numpy())
-
-    #         atk_ensemble_probs_for_batch =  torch.stack(atk_batch_ensemble_probs)
-    #         atk_avg_probs_per_image      =  torch.mean(atk_ensemble_probs_for_batch, dim=0) 
-    #         atk_entropies_per_image      = -torch.sum(atk_avg_probs_per_image * torch.log(atk_avg_probs_per_image + self.epsilon), dim=1)
-    #         all_atk_entropies.extend(atk_entropies_per_image.cpu().detach().numpy())
+            atk_avg_batch_lambda = np.mean(np.array(atk_batch_lambdas), axis=0)
+            all_atk_lambdas.extend(atk_avg_batch_lambda)
 
 
-    #         # compute model ensemble errors rates
-    #         _, predicted = torch.max(avg_probs_per_image, 1)
-    #         is_error = (predicted != labels)
-    #         all_errors.extend((is_error).cpu().detach().numpy())
-    #         _, atk_predicted = torch.max(atk_avg_probs_per_image, 1)
-    #         is_atk_error = (atk_predicted != labels)
-    #         all_atk_errors.extend((is_atk_error).cpu().detach().numpy())
+            ensemble_probs_for_batch =  torch.stack(batch_ensemble_probs)
+            avg_probs_per_image      =  torch.mean(ensemble_probs_for_batch, dim=0) 
 
-    #     all_errors    = np.array(all_errors).astype(float) # convert bool to float for averaging
-    #     all_entropies = np.array(all_entropies)
-    #     all_lambdas   = np.stack(all_lambdas)
+            atk_ensemble_probs_for_batch =  torch.stack(atk_batch_ensemble_probs)
+            atk_avg_probs_per_image      =  torch.mean(atk_ensemble_probs_for_batch, dim=0) 
 
-    #     all_atk_errors    = np.array(all_atk_errors).astype(float) # convert bool to float for averaging
-    #     all_atk_entropies = np.array(all_atk_entropies)
-    #     all_atk_lambdas   = np.stack(all_atk_lambdas)
+            # compute model ensemble errors rates
+            _, predicted = torch.max(avg_probs_per_image, 1)
+            is_error = (predicted != labels)
+            all_errors.extend((is_error).cpu().detach().numpy())
+            _, atk_predicted = torch.max(atk_avg_probs_per_image, 1)
+            is_atk_error = (atk_predicted != labels)
+            all_atk_errors.extend((is_atk_error).cpu().detach().numpy())
+
+        all_errors    = np.array(all_errors).astype(float) # convert bool to float for averaging
+        all_lambdas   = np.stack(all_lambdas)
+
+        all_atk_errors    = np.array(all_atk_errors).astype(float) # convert bool to float for averaging
+        all_atk_lambdas   = np.stack(all_atk_lambdas)
         
-    #     if num_lyap_exp == 1:     
-    #         all_lambdas = all_lambdas.reshape(-1, 1)
-    #         all_atk_lambdas = all_atk_lambdas.reshape(-1, 1)
-    #     with plt.style.context(["science"]):
-    #         plt.rcParams['text.usetex'] = False  # <-- ADD THIS LINE
-    #         fig, axes = plt.subplots(num_lyap_exp, 1, figsize=(10, 6))
+        if num_lyap_exp == 1:     
+            all_lambdas = all_lambdas.reshape(-1, 1)
+            all_atk_lambdas = all_atk_lambdas.reshape(-1, 1)
+        with plt.style.context(["science"]):
+            plt.rcParams['text.usetex'] = False  # <-- ADD THIS LINE
+            fig, axes = plt.subplots(num_lyap_exp, 1, figsize=(9, 6))
 
-    #         # If only one subplot, axes is not iterable — make it a list
-    #         if num_lyap_exp == 1:
-    #             axes = [axes]
+            # If only one subplot, axes is not iterable — make it a list
+            if num_lyap_exp == 1:
+                axes = [axes]
 
-    #         fig.suptitle(r'Classification Error and Predictive Uncertainty vs. $\lambda_i^{(L)}(\mathbf{x})$')
+            fig.suptitle(r'Classification Error and Predictive Uncertainty vs. $\lambda_i^{(L)}(\mathbf{x})$')
 
-    #         for i, ax in enumerate(axes):
+            global_min = np.inf
+            global_max = -np.inf
+
+            for i in range(num_lyap_exp):
+                lambdas_i = all_lambdas[:, i]
+                atk_lambdas_i = all_atk_lambdas[:, i]
+
+                global_min = min(global_min, np.min(lambdas_i), np.min(atk_lambdas_i))
+                global_max = max(global_max, np.max(lambdas_i), np.max(atk_lambdas_i))
+
+            for i, ax in enumerate(axes):
                 
-    #             lambdas_i = all_lambdas[:, i] 
-    #             atk_lambdas_i = all_atk_lambdas[:, i] 
+                lambdas_i = all_lambdas[:, i] 
+                atk_lambdas_i = all_atk_lambdas[:, i] 
 
-    #             min_lambda  = np.min(lambdas_i)
-    #             max_lambda  = np.max(lambdas_i)
-    #             lambda_bins = np.linspace(min_lambda, max_lambda, bin_edges)
+                min_lambda  = np.min(lambdas_i)
+                max_lambda  = np.max(lambdas_i)
+                lambda_bins = np.linspace(min_lambda, max_lambda, bin_edges)
 
-    #             atk_min_lambda  = np.min(atk_lambdas_i)
-    #             atk_max_lambda  = np.max(atk_lambdas_i)
-    #             atk_lambda_bins = np.linspace(atk_min_lambda, atk_max_lambda, bin_edges)
+                atk_min_lambda  = np.min(atk_lambdas_i)
+                atk_max_lambda  = np.max(atk_lambdas_i)
+                atk_lambda_bins = np.linspace(atk_min_lambda, atk_max_lambda, bin_edges)
 
-    #             binned_lambda    = []
-    #             binned_errors    = []
-    #             binned_errors_se = []   # <-- standard error for error %
-    #             binned_entropies = []
-    #             binned_entropy_se = []  # <-- standard error for entropy
+                binned_lambda    = []
+                binned_errors    = []
+                binned_errors_se = []   # <-- standard error for error %
 
-    #             atk_binned_lambda    = []
-    #             atk_binned_errors    = []
-    #             atk_binned_errors_se = []
-    #             atk_binned_entropies = []
-    #             atk_binned_entropy_se = []
+                atk_binned_lambda    = []
+                atk_binned_errors    = []
+                atk_binned_errors_se = []
 
-    #             # Iterate through bins and calculate average error and entropy + errors
-    #             for j in range(len(lambda_bins) - 1):
-    #                 lower_bound = lambda_bins[j]
-    #                 upper_bound = lambda_bins[j+1]
+                # Iterate through bins and calculate average error and entropy + errors
+                for j in range(len(lambda_bins) - 1):
+                    lower_bound = lambda_bins[j]
+                    upper_bound = lambda_bins[j+1]
 
-    #                 if j == len(lambda_bins) - 2:
-    #                     bin_indices = np.where((lambdas_i >= lower_bound) & (lambdas_i <= upper_bound))
-    #                 else:
-    #                     bin_indices = np.where((lambdas_i >= lower_bound) & (lambdas_i < upper_bound))
+                    if j == len(lambda_bins) - 2:
+                        bin_indices = np.where((lambdas_i >= lower_bound) & (lambdas_i <= upper_bound))
+                    else:
+                        bin_indices = np.where((lambdas_i >= lower_bound) & (lambdas_i < upper_bound))
 
-    #                 idx = bin_indices[0]
-    #                 n = len(idx)
-    #                 if n > 0:
-    #                     # mean lambda in bin
-    #                     avg_lambda_in_bin  = np.mean(lambdas_i[idx])
+                    idx = bin_indices[0]
+                    n = len(idx)
+                    if n > 0:
+                        # mean lambda in bin
+                        avg_lambda_in_bin  = np.mean(lambdas_i[idx])
 
-    #                     # error: all_errors are 0/1 floats; compute proportion p
-    #                     p = np.mean(all_errors[idx])     # proportion of errors in bin (0..1)
-    #                     avg_error_in_bin = p * 100.0     # convert to percent
+                        # error: all_errors are 0/1 floats; compute proportion p
+                        p = np.mean(all_errors[idx])     # proportion of errors in bin (0..1)
+                        avg_error_in_bin = p * 100.0     # convert to percent
 
-    #                     # binomial standard error for proportion (as percent)
-    #                     # if n==1 this becomes 0; avoids divide-by-zero because n>0
-    #                     error_se_pct = math.sqrt(p * (1.0 - p) / n) * 100.0
+                        # binomial standard error for proportion (as percent)
+                        # if n==1 this becomes 0; avoids divide-by-zero because n>0
+                        error_se_pct = math.sqrt(p * (1.0 - p) / n) * 100.0
 
-    #                     # entropy: compute mean and standard error
-    #                     ent_vals = all_entropies[idx]
-    #                     avg_entropy_in_bin = np.mean(ent_vals)
-    #                     entropy_se = np.std(ent_vals, ddof=0) / math.sqrt(n)  # std error of mean
+                        binned_lambda.append(avg_lambda_in_bin)
+                        binned_errors.append(avg_error_in_bin)
+                        binned_errors_se.append(error_se_pct)
 
-    #                     binned_lambda.append(avg_lambda_in_bin)
-    #                     binned_errors.append(avg_error_in_bin)
-    #                     binned_errors_se.append(error_se_pct)
-    #                     binned_entropies.append(avg_entropy_in_bin)
-    #                     binned_entropy_se.append(entropy_se)
+                # same for attacked bins
+                for j in range(len(atk_lambda_bins) - 1):
+                    atk_lower_bound = atk_lambda_bins[j]
+                    atk_upper_bound = atk_lambda_bins[j+1]
 
-    #             # same for attacked bins
-    #             for j in range(len(atk_lambda_bins) - 1):
-    #                 atk_lower_bound = atk_lambda_bins[j]
-    #                 atk_upper_bound = atk_lambda_bins[j+1]
+                    if j == len(atk_lambda_bins) - 2:
+                        atk_bin_indices = np.where((atk_lambdas_i >= atk_lower_bound) & (atk_lambdas_i <= atk_upper_bound))
+                    else:
+                        atk_bin_indices = np.where((atk_lambdas_i >= atk_lower_bound) & (atk_lambdas_i < atk_upper_bound))
 
-    #                 if j == len(atk_lambda_bins) - 2:
-    #                     atk_bin_indices = np.where((atk_lambdas_i >= atk_lower_bound) & (atk_lambdas_i <= atk_upper_bound))
-    #                 else:
-    #                     atk_bin_indices = np.where((atk_lambdas_i >= atk_lower_bound) & (atk_lambdas_i < atk_upper_bound))
+                    idx = atk_bin_indices[0]
+                    n = len(idx)
+                    if n > 0:
+                        atk_avg_lambda_in_bin  = np.mean(atk_lambdas_i[idx])
+                        p = np.mean(all_atk_errors[idx])
+                        atk_avg_error_in_bin = p * 100.0
+                        atk_error_se_pct = math.sqrt(p * (1.0 - p) / n) * 100.0
 
-    #                 idx = atk_bin_indices[0]
-    #                 n = len(idx)
-    #                 if n > 0:
-    #                     atk_avg_lambda_in_bin  = np.mean(atk_lambdas_i[idx])
-    #                     p = np.mean(all_atk_errors[idx])
-    #                     atk_avg_error_in_bin = p * 100.0
-    #                     atk_error_se_pct = math.sqrt(p * (1.0 - p) / n) * 100.0
+                        atk_binned_lambda.append(atk_avg_lambda_in_bin)
+                        atk_binned_errors.append(atk_avg_error_in_bin)
+                        atk_binned_errors_se.append(atk_error_se_pct)
 
-    #                     ent_vals = all_atk_entropies[idx]
-    #                     atk_avg_entropy_in_bin = np.mean(ent_vals)
-    #                     atk_entropy_se = np.std(ent_vals, ddof=0) / math.sqrt(n)
+                # Plotting: error on left y-axis, entropy on right y-axis
+                color_error = 'black'
+                atk_color_error = 'red'
+                ax.set_xlabel(r'$\lambda_i^{(L)}(\mathbf{x})$')
+                ax.set_ylabel('Error' +  r'$(\%)$', color=color_error)
 
-    #                     atk_binned_lambda.append(atk_avg_lambda_in_bin)
-    #                     atk_binned_errors.append(atk_avg_error_in_bin)
-    #                     atk_binned_errors_se.append(atk_error_se_pct)
-    #                     atk_binned_entropies.append(atk_avg_entropy_in_bin)
-    #                     atk_binned_entropy_se.append(atk_entropy_se)
+                # convert to numpy arrays for plotting
+                binned_lambda = np.array(binned_lambda)
+                binned_errors = np.array(binned_errors)
+                binned_errors_se = np.array(binned_errors_se)
 
-    #             # Plotting: error on left y-axis, entropy on right y-axis
-    #             color_error = 'black'
-    #             atk_color_error = 'red'
-    #             ax.set_xlabel(r'$\lambda_i^{(L)}(\mathbf{x})$')
-    #             ax.set_ylabel('Error' +  r'$(\%)$', color=color_error)
+                atk_binned_lambda = np.array(atk_binned_lambda)
+                atk_binned_errors = np.array(atk_binned_errors)
+                atk_binned_errors_se = np.array(atk_binned_errors_se)
 
-    #             # convert to numpy arrays for plotting
-    #             binned_lambda = np.array(binned_lambda)
-    #             binned_errors = np.array(binned_errors)
-    #             binned_errors_se = np.array(binned_errors_se)
+                # main (clean) plot style: markers + errorbars with capsize
+                if binned_lambda.size > 0:
+                    ax.errorbar(binned_lambda, binned_errors, yerr=binned_errors_se,
+                                fmt='-o', capsize=3, label='Error (%)', color=color_error)
+                if atk_binned_lambda.size > 0:
+                    ax.errorbar(atk_binned_lambda, atk_binned_errors, yerr=atk_binned_errors_se,
+                                fmt='-o', capsize=3, label='Error (attacked) (%)', color=atk_color_error)
 
-    #             atk_binned_lambda = np.array(atk_binned_lambda)
-    #             atk_binned_errors = np.array(atk_binned_errors)
-    #             atk_binned_errors_se = np.array(atk_binned_errors_se)
+                ax.tick_params(axis='y', labelcolor=color_error)
+                # ax.set_ylim(bottom=0)
 
-    #             # main (clean) plot style: markers + errorbars with capsize
-    #             if binned_lambda.size > 0:
-    #                 ax.errorbar(binned_lambda, binned_errors, yerr=binned_errors_se,
-    #                             fmt='-o', capsize=3, label='Error (%)', color=color_error)
-    #             if atk_binned_lambda.size > 0:
-    #                 ax.errorbar(atk_binned_lambda, atk_binned_errors, yerr=atk_binned_errors_se,
-    #                             fmt='-o', capsize=3, label='Error (attacked) (%)', color=atk_color_error)
+                ax.set_xlim(global_min, global_max)
+                ax.grid(True, linestyle='--', alpha=0.6)
 
-    #             ax.tick_params(axis='y', labelcolor=color_error)
-    #             ax.set_ylim(bottom=0)
+                binned_lambda_array = np.array(binned_lambda)
+                binned_errors_array = np.array(binned_errors)
+                correlation_arg     = np.vstack([binned_lambda_array, binned_errors_array])
+                correlation_array   = np.corrcoef(correlation_arg)
+                self.correlation_list.append(correlation_array[0,1])
 
-    #             ax2 = ax.twinx()
-    #             color_entropy = 'green'
-    #             atk_color_entropy = 'blue'
-    #             ax2.set_ylabel(r'$H$', color=color_entropy)
+                atk_binned_lambda_array = np.array(atk_binned_lambda)
+                atk_binned_errors_array = np.array(atk_binned_errors)
+                atk_correlation_arg     = np.vstack([atk_binned_lambda_array, atk_binned_errors_array])
+                atk_correlation_array   = np.corrcoef(atk_correlation_arg)
+                self.atk_correlation_list.append(atk_correlation_array[0,1])
 
-    #             binned_entropies = np.array(binned_entropies)
-    #             binned_entropy_se = np.array(binned_entropy_se)
-    #             atk_binned_entropies = np.array(atk_binned_entropies)
-    #             atk_binned_entropy_se = np.array(atk_binned_entropy_se)
+            clean_proxy = plt.Line2D([0], [0], color="black", marker='o', linestyle='-')
+            atk_proxy   = plt.Line2D([0], [0], color="red",   marker='o', linestyle='-')
 
-    #             if binned_lambda.size > 0:
-    #                 ax2.errorbar(binned_lambda, binned_entropies, yerr=binned_entropy_se,
-    #                             fmt='-s', capsize=3, label='H', color=color_entropy)
-    #             if atk_binned_lambda.size > 0:
-    #                 ax2.errorbar(atk_binned_lambda, atk_binned_entropies, yerr=atk_binned_entropy_se,
-    #                             fmt='-s', capsize=3, label='H (attacked)', color=atk_color_entropy)
-
-    #             ax2.tick_params(axis='y', labelcolor=color_entropy)
-    #             ax2.set_ylim(bottom=0)
-
-    #             ax.grid(True, linestyle='--', alpha=0.6)
-
-    #             binned_lambda_array = np.array(binned_lambda)
-    #             binned_errors_array = np.array(binned_errors)
-    #             correlation_arg     = np.vstack([binned_lambda_array, binned_errors_array])
-    #             correlation_array   = np.corrcoef(correlation_arg)
-    #             self.correlation_list.append(correlation_array[0,1])
-
-    #             atk_binned_lambda_array = np.array(atk_binned_lambda)
-    #             atk_binned_errors_array = np.array(atk_binned_errors)
-    #             atk_correlation_arg     = np.vstack([atk_binned_lambda_array, atk_binned_errors_array])
-    #             atk_correlation_array   = np.corrcoef(atk_correlation_arg)
-    #             self.atk_correlation_list.append(atk_correlation_array[0,1])
-
-    #         plt.savefig(self.err_ent_vs_lmbd_plot_path, dpi=600)
-    #         plt.close()
-    #     print("Plot saved. :)")
-    #     print(self.correlation_list, self.atk_correlation_list)
+            fig.legend(
+                handles=[clean_proxy, atk_proxy],
+                labels=["Un-perturbed", "Perturbed"],
+                loc="upper right",
+                bbox_to_anchor=(0.98, 0.98)
+            )
+            plt.savefig(self.err_ent_vs_lmbd_plot_path_atk, dpi=600)
+            plt.close()
+        print("Plot saved. :)")
+        print(self.correlation_list, self.atk_correlation_list)
 
     def analyze_attacks(self, model, attack_sizes):
         """
@@ -1032,10 +1008,10 @@ class DesiredPlot(Enum):
 
 def main():
 
-    classifier = MNISTClassification(debug=True, debug_subset_size = 2500, number_of_epochs=25) # set debug flag to True if you want code to run in 1x minutes instead of 10x minutes
+    classifier = MNISTClassification(debug=False, debug_subset_size = 100, number_of_epochs=25) # set debug flag to True if you want code to run in 1x minutes instead of 10x minutes
     
     # change as desired
-    desired_plot            = DesiredPlot.STAT_TABLE #Prof Rainer Engelken try each of the options for this
+    desired_plot            = DesiredPlot.ENTROPY_ATK #Prof Rainer Engelken try each of the options for this
     num_models_averaged     = 5
     hidden_layer_sizes_list = range(10, 120, 10)
     attack_sizes            = [0.2]
