@@ -12,7 +12,7 @@ from enum import Enum
 from torch.utils.data import Subset
 import scienceplots
 import random
-
+from matplotlib.ticker import LogLocator, ScalarFormatter
 class TanhSoftmaxNet(nn.Module):
     """
     A deep, feed-forward neural network (MLP) using Tanh activations.
@@ -892,40 +892,32 @@ class MNISTClassification:
             accuracies.append(acc)
             all_examples.append(ex)
         with plt.style.context(["science"]):
-            plt.rcParams['text.usetex'] = False  # <-- ADD THIS LINE
-            plt.figure(figsize=(10, 8))
+            plt.rcParams['text.usetex'] = False
+            plt.figure(figsize=(8, 3.2))
 
-            try:
-                examples_to_show = all_examples[2] #TODO have this update based on the list size
-                cnt = 0
-                for i in range(len(examples_to_show)):
-                    cnt += 1
-                    orig_pred, adv_pred, orig_img, adv_img = examples_to_show[i]
-                    
-                    # original image
-                    plt.subplot(2, self.numb_adversaila_examples, cnt)
-                    plt.xticks([], [])
-                    plt.yticks([], [])
-                    plt.title(f"Original: {orig_pred}")
-                    plt.imshow(orig_img, cmap="gray")
-                    
-                    # adversarial images
-                    plt.subplot(2, self.numb_adversaila_examples, cnt + self.numb_adversaila_examples)
-                    plt.xticks([], [])
-                    plt.yticks([], [])
-                    plt.title(f"Adversarial: {adv_pred}")
-                    plt.imshow(adv_img, cmap="gray")
-                    
-                    if cnt == self.numb_adversaila_examples:
-                        break
-                        
-                plt.savefig(self.attack_plot_path, dpi=600)
-                plt.close()
-                print("Plot saved. :)")
+            examples_to_show = all_examples[4]
+            cnt = 0
+            for i in range(len(examples_to_show)):
+                cnt += 1
+                orig_pred, adv_pred, orig_img, adv_img = examples_to_show[i]
 
-            except IndexError:
-                print("\nNot enough adversarial examples found to display for that attack size.")
-                print("Try training the model for more epochs or increasing attack size.")
+                # original
+                plt.subplot(2, self.numb_adversaila_examples, cnt)
+                plt.xticks([]); plt.yticks([])
+                plt.title(f"Original: {orig_pred}")
+                plt.imshow(orig_img, cmap="gray")
+
+                # adversarial
+                plt.subplot(2, self.numb_adversaila_examples, cnt + self.numb_adversaila_examples)
+                plt.xticks([]); plt.yticks([])
+                plt.title(f"Adversarial: {adv_pred}")
+                plt.imshow(adv_img, cmap="gray")
+
+                if cnt == self.numb_adversaila_examples:
+                    break
+
+            plt.savefig(self.attack_plot_path, dpi=600)
+            plt.close()
 
     def test_attack(self, model, attack_size, num_lyap_exp=1):
         """
@@ -1038,12 +1030,12 @@ class DesiredPlot(Enum):
     ENTROPY_ATK  = 7
 
 def main():
-    classifier = MNISTClassification(debug=False) # set debug flag to True if you want code to run in 1x minutes instead of 10x minutes
+    classifier = MNISTClassification(debug=True) # set debug flag to True if you want code to run in 1x minutes instead of 10x minutes
     
     # change as desired
-    desired_plot            = DesiredPlot.ATTACK #Prof Rainer Engelken try each of the options for this
+    desired_plot            = DesiredPlot.AVERAGE #Prof Rainer Engelken try each of the options for this
     num_models_averaged     = 5
-    hidden_layer_sizes_list = range(10, 120, 50)
+    hidden_layer_sizes_list = range(10, 120, 10)
     attack_sizes            = [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
     num_lyap_exp            = 3
     entropy_attack          = 0.2                  # set to zero for no attack plots
@@ -1117,9 +1109,18 @@ def main():
         
         with plt.style.context(["science"]):
             plt.rcParams['text.usetex'] = False  # <-- ADD THIS LINE
-            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 2))
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 1.4))
+
             ax1.semilogx(hidden_layer_sizes_list,    avg_avg_eig1_list, label='Average Accuracy')
             ax2.semilogx(hidden_layer_sizes_list, avg_std_dev_eig1_list, label='Std Dev of Accuracy')
+
+            for ax in (ax1, ax2):
+                ax.set_xscale('log')
+                ax.xaxis.set_major_locator(LogLocator(base=10, numticks=2))
+                ax.xaxis.set_major_formatter(ScalarFormatter())
+                ax.ticklabel_format(axis='x', style='sci', scilimits=(0, 0))
+                ax.set_xticks([1e1, 1e2])  # explicit tick values
+                ax.set_xticklabels([r"$10^1$", r"$10^2$"])
 
             ax1.set_xlabel('N')
             ax2.set_xlabel('N')
