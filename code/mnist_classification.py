@@ -498,7 +498,7 @@ class MNISTClassification:
             all_lambdas = all_lambdas.reshape(-1, 1)
         with plt.style.context(["science"]):
             plt.rcParams['text.usetex'] = False  # <-- ADD THIS LINE
-            fig, axes = plt.subplots(num_lyap_exp, 1, figsize=(16, 2.4))
+            fig, axes = plt.subplots(num_lyap_exp, 1, figsize=(8, 2.4))
 
             # If only one subplot, axes is not iterable — make it a list
             if num_lyap_exp == 1:
@@ -1029,18 +1029,19 @@ class MNISTClassification:
 
 
 class DesiredPlot(Enum):
-    FTLE_2D        = 1
-    ENTROPY        = 2
-    AVERAGE        = 3
-    ATTACK         = 4
-    STAT_TABLE     = 5
-    TRAINING       = 6
+    TRAINING     = 1
+    FTLE_2D      = 2
+    ENTROPY      = 3
+    AVERAGE      = 4
+    ATTACK       = 5
+    STAT_TABLE   = 6
+    ENTROPY_ATK  = 7
 
 def main():
     classifier = MNISTClassification(debug=False) # set debug flag to True if you want code to run in 1x minutes instead of 10x minutes
     
     # change as desired
-    desired_plot            = DesiredPlot.ENTROPY #Prof Rainer Engelken try each of the options for this
+    desired_plot            = DesiredPlot.ATTACK #Prof Rainer Engelken try each of the options for this
     num_models_averaged     = 5
     hidden_layer_sizes_list = range(10, 120, 50)
     attack_sizes            = [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
@@ -1193,6 +1194,15 @@ def main():
                 print(f'The average of {num_models_averaged} runs was an an average of {avg_atk_avg_of_eigi} with a standard deviation of {avg_atk_std_dev_of_eigi} for mu{i+1} and attack size of {attack_sizes[j]}.')
                 print(f'Thats a percent difference of {(avg_atk_avg_of_eigi - avg_avg_of_eigi)/avg_avg_of_eigi} in the average and a percent difference of {(avg_atk_std_dev_of_eigi - avg_std_dev_of_eigi)/avg_std_dev_of_eigi} from the regular to attacked images.')
 
-        
+    if desired_plot == DesiredPlot.ENTROPY_ATK:
+        ensemble_models = []
+        for num in range(num_models_averaged):
+            print(f"\n--- Training Ensemble Model {num+1}/{num_models_averaged} ---")
+            untrained_model     = TanhSoftmaxNet().to(classifier.device)
+            trained_model ,_    = classifier.train_model(untrained_model, title=f"Ensemble Model {num+1} Training")
+            ensemble_models.append(trained_model)
+
+        classifier.plot_error_and_entropy_vs_lambda_atk(ensemble_models, num_lyap_exp, attack_size=entropy_attack)
+
 if __name__ == "__main__":
     main()
