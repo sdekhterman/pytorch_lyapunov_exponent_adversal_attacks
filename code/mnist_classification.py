@@ -1030,7 +1030,7 @@ class DesiredPlot(Enum):
     ENTROPY_ATK  = 7
 
 def main():
-    classifier = MNISTClassification(debug=True) # set debug flag to True if you want code to run in 1x minutes instead of 10x minutes
+    classifier = MNISTClassification(debug=False) # set debug flag to True if you want code to run in 1x minutes instead of 10x minutes
     
     # change as desired
     desired_plot            = DesiredPlot.AVERAGE #Prof Rainer Engelken try each of the options for this
