@@ -169,7 +169,7 @@ class MNISTClassification:
     FTLE calculation, adversarial attack generation (FGSM), and
     plotting/visualization of results.
     """
-    def __init__(self, learning_rate: float = 3e-3, momentum: float = 0.9, number_of_epochs: int = 25, batch_size: int = 64, debug: bool = False) -> None:
+    def __init__(self, learning_rate: float = 3e-3, momentum: float = 0.9, number_of_epochs: int = 25, batch_size: int = 64, debug: bool = False, debug_subset_size: int = 100) -> None:
         """
         Initializes the MNIST workflow manager.
 
@@ -187,14 +187,15 @@ class MNISTClassification:
         self.batch_size       = batch_size
 
         if debug:
-            self.number_of_epochs = 1
+            self.number_of_epochs = number_of_epochs
         
         transform         = transforms.Compose([transforms.ToTensor()]) 
         train_dataset     = torchvision.datasets.MNIST(root='./data', train=True, transform=transform, download=True)
         test_dataset      = torchvision.datasets.MNIST(root='./data', train=False, transform=transform)
         
+        self.debug_subset_size = debug_subset_size
         if debug:
-            subset_indices = range(100)
+            subset_indices = range(self.debug_subset_size)
             test_dataset = Subset(test_dataset, subset_indices)
 
         self.train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=self.batch_size, shuffle=True)
@@ -1030,13 +1031,14 @@ class DesiredPlot(Enum):
     ENTROPY_ATK  = 7
 
 def main():
-    classifier = MNISTClassification(debug=False) # set debug flag to True if you want code to run in 1x minutes instead of 10x minutes
+
+    classifier = MNISTClassification(debug=True, debug_subset_size = 2500, number_of_epochs=25) # set debug flag to True if you want code to run in 1x minutes instead of 10x minutes
     
     # change as desired
-    desired_plot            = DesiredPlot.AVERAGE #Prof Rainer Engelken try each of the options for this
+    desired_plot            = DesiredPlot.STAT_TABLE #Prof Rainer Engelken try each of the options for this
     num_models_averaged     = 5
     hidden_layer_sizes_list = range(10, 120, 10)
-    attack_sizes            = [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
+    attack_sizes            = [0.2]
     num_lyap_exp            = 3
     entropy_attack          = 0.2                  # set to zero for no attack plots
 
@@ -1171,13 +1173,13 @@ def main():
         std_acc        = statistics.stdev(accuracy_list)
         atk_avg_tensor = torch.tensor(atk_accuracy_list)
 
-        print(f'The average of {num_models_averaged} runs was an an average of {avg_acc} with a standard deviation of {std_acc} for the percent of pictures correctly classified.')
+        print(f'The average of {num_models_averaged} runs was an an average of {avg_acc: .4f} with a standard deviation of {std_acc: .4f} for the percent of pictures correctly classified.')
         for i in range(len(attack_sizes)):
             atk_avg_tensor_i = atk_avg_tensor[:,i]
             avg_atk_acc      = atk_avg_tensor_i.mean().item()
             std_atk_acc      = atk_avg_tensor_i.std().item()
-            print(f'The average of {num_models_averaged} runs was an an average of {avg_atk_acc} with a standard deviation of {std_atk_acc} for the percent of ATTACKED pictures correctly classified.')
-            print(f'Thats a percent difference of {(avg_atk_acc - avg_acc)/avg_acc} in the average and a percent difference of {(std_atk_acc - std_acc)/std_acc} from the regular to attacked images.')
+            print(f'The average of {num_models_averaged} runs was an an average of {avg_atk_acc:.4f} with a standard deviation of {std_atk_acc:.4f} for the percent of ATTACKED pictures correctly classified.')
+            print(f'Thats a percent difference of {(avg_atk_acc - avg_acc)/avg_acc: .4f} in the average and a percent difference of {(std_atk_acc - std_acc)/std_acc:.4f} from the regular to attacked images.')
             
         avg_eig_tensor         = torch.stack(average_eig_list)
         std_eig_tensor         = torch.stack(std_eig_list)
@@ -1187,13 +1189,29 @@ def main():
         for i in range(num_lyap_exp):
             avg_avg_of_eigi     = avg_eig_tensor[:,i].mean().item()
             avg_std_dev_of_eigi = std_eig_tensor[:,i].mean().item()
-            print(f'The average of {num_models_averaged} runs was an an average of {avg_avg_of_eigi} with a standard deviation of {avg_std_dev_of_eigi} for mu{i+1}.')
+            print(
+                f'The average of {num_models_averaged} runs was an average of '
+                f'{avg_avg_of_eigi:.4f} with a standard deviation of {avg_std_dev_of_eigi:.4f} '
+                f'for mu{i+1}.'
+            )
 
             for j in range(len(attack_sizes)):
-                avg_atk_avg_of_eigi     = atk_avg_atk_eig_tensor[:,j, i].mean().item()
-                avg_atk_std_dev_of_eigi = atk_std_eig_tensor[:,j,i].std().item()
-                print(f'The average of {num_models_averaged} runs was an an average of {avg_atk_avg_of_eigi} with a standard deviation of {avg_atk_std_dev_of_eigi} for mu{i+1} and attack size of {attack_sizes[j]}.')
-                print(f'Thats a percent difference of {(avg_atk_avg_of_eigi - avg_avg_of_eigi)/avg_avg_of_eigi} in the average and a percent difference of {(avg_atk_std_dev_of_eigi - avg_std_dev_of_eigi)/avg_std_dev_of_eigi} from the regular to attacked images.')
+                avg_atk_avg_of_eigi     = atk_avg_atk_eig_tensor[:, j, i].mean().item()
+                avg_atk_std_dev_of_eigi = atk_std_eig_tensor[:, j, i].std().item()
+
+                print(
+                    f'The average of {num_models_averaged} runs was an average of '
+                    f'{avg_atk_avg_of_eigi:.4f} with a standard deviation of '
+                    f'{avg_atk_std_dev_of_eigi:.4f} for mu{i+1} and attack size {attack_sizes[j]:.4f}.'
+                )
+
+                pct_avg  = (avg_atk_avg_of_eigi - avg_avg_of_eigi) / avg_avg_of_eigi
+                pct_std  = (avg_atk_std_dev_of_eigi - avg_std_dev_of_eigi) / avg_std_dev_of_eigi
+
+                print(
+                    f"That's a percent difference of {pct_avg:.4f} in the average and "
+                    f'{pct_std:.4f} in the standard deviation from regular to attacked images.'
+                )
 
     if desired_plot == DesiredPlot.ENTROPY_ATK:
         ensemble_models = []
