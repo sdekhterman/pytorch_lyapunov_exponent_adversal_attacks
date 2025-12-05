@@ -978,7 +978,7 @@ class MNISTClassification:
         print(f"Epsilon: {attack_size}\tTest Accuracy = {n_correct} / {len(self.test_loader.dataset)} = {final_acc:.4f}")
 
         return final_acc, adv_examples, average_lyap, stddev_lyap
-    
+
     def fgsm_attack(self, images, attack_size, image_grads):
         """
         Performs the Fast Gradient Sign Method (FGSM) attack.
@@ -1005,13 +1005,14 @@ class DesiredPlot(Enum):
     ATTACK       = 5
     STAT_TABLE   = 6
     ENTROPY_ATK  = 7
+    ATK_STEP     = 8
 
 def main():
 
-    classifier = MNISTClassification(debug=False, debug_subset_size = 100, number_of_epochs=25) # set debug flag to True if you want code to run in 1x minutes instead of 10x minutes
+    classifier = MNISTClassification(debug=True, debug_subset_size = 1, number_of_epochs=25) # set debug flag to True if you want code to run in 1x minutes instead of 10x minutes
     
     # change as desired
-    desired_plot            = DesiredPlot.ENTROPY_ATK #Prof Rainer Engelken try each of the options for this
+    desired_plot            = DesiredPlot.ATK_STEP #Prof Rainer Engelken try each of the options for this
     num_models_averaged     = 5
     hidden_layer_sizes_list = range(10, 120, 10)
     attack_sizes            = [0.2]
@@ -1199,5 +1200,90 @@ def main():
 
         classifier.plot_error_and_entropy_vs_lambda_atk(ensemble_models, num_lyap_exp, attack_size=entropy_attack)
 
+    if desired_plot == DesiredPlot.ATK_STEP:
+        attack_sizes_step = [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
+
+        # Collect results first
+        ensemble_models = []
+        for num in range(num_models_averaged):
+            print(f"\n--- Training Ensemble Model {num+1}/{num_models_averaged} ---")
+            untrained_model  = TanhSoftmaxNet().to(classifier.device)
+            trained_model, _ = classifier.train_model(untrained_model, title=f"Ensemble Model {num+1} Training")
+            ensemble_models.append(trained_model)
+
+        results = []
+        for trained_model in ensemble_models:
+            for attack_size in attack_sizes_step:
+                final_acc, _, avg_lyap, stddev_lyap = classifier.test_attack(trained_model, attack_size)
+                results.append((
+                    attack_size,
+                    float(final_acc),
+                    float(avg_lyap.detach().cpu().item()),
+                    float(stddev_lyap.detach().cpu().item())
+                ))
+
+        results = np.array(results, dtype=float)  # shape: (num_models*num_eps, 4)
+
+        unique_eps = np.unique(results[:, 0])
+
+        avg_acc_per_eps   = []
+        std_acc_per_eps   = []
+
+        avg_lyap_per_eps  = []
+        std_lyap_per_eps  = []  # FULL variance: model variance + per-model Lyap variance
+
+        for eps in unique_eps:
+            mask = (results[:, 0] == eps)
+
+            acc_vals     = results[mask, 1]
+            lyap_means   = results[mask, 2]
+            lyap_stds    = results[mask, 3]  # per-model stddev returned by test_attack()
+
+            avg_acc_per_eps.append(acc_vals.mean())
+            std_acc_per_eps.append(acc_vals.std())
+
+            mean_of_means = lyap_means.mean()
+            var_across_models = lyap_means.var()  # ensemble variance
+            mean_internal_var = np.mean(lyap_stds**2)  # average of per-model variances
+
+            total_variance = var_across_models + mean_internal_var
+            total_std = np.sqrt(total_variance)
+
+            avg_lyap_per_eps.append(mean_of_means)
+            std_lyap_per_eps.append(total_std)
+
+        # Convert to numpy arrays
+        avg_acc_per_eps   = np.array(avg_acc_per_eps)
+        std_acc_per_eps   = np.array(std_acc_per_eps)
+        avg_lyap_per_eps  = np.array(avg_lyap_per_eps)
+        std_lyap_per_eps  = np.array(std_lyap_per_eps)
+
+        fig, ax1 = plt.subplots()
+
+        # Accuracy plot
+        ax1.set_xlabel('Attack Size')
+        ax1.set_ylabel('Classification Accuracy', color='tab:red')
+        ax1.errorbar(unique_eps, avg_acc_per_eps, yerr=std_acc_per_eps,
+                    fmt='-o', capsize=4, color='tab:red')
+        ax1.tick_params(axis='y', labelcolor='tab:red')
+
+        # Lyapunov plot
+        ax2 = ax1.twinx()
+        ax2.set_ylabel('Maximum Lyapunov Exponent', color='tab:blue')
+        ax2.errorbar(unique_eps, avg_lyap_per_eps, yerr=std_lyap_per_eps,
+                    fmt='-o', capsize=4, color='tab:blue')
+        ax2.tick_params(axis='y', labelcolor='tab:blue')
+
+        my_path          = os.path.dirname(os.path.abspath(__file__))
+        my_path_parent   = os.path.dirname(my_path)
+        attack_lyap_path = my_path_parent + "/images/attack_lyaps.png"
+
+        fig.tight_layout()
+        plt.savefig(attack_lyap_path, dpi=600)
+        plt.close()
+
+
+
+        
 if __name__ == "__main__":
     main()
