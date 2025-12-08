@@ -1,9 +1,7 @@
 # Adversarial Attacks Lyapunov Exponents
  This repository replicates some of the results from, ["Finite-Time Lyapunov Exponents of Deep Neural Networks" from Physical Review Letters 132, 057301 by L. Storm, H. Linander,  J. Bec, K. Gustavsson, and B. Mehlig (2024)](https://doi.org/10.1103/PhysRevLett.132.057301).
 
-This was done to check that the computation of the Finite-Time Lyapunov Exponents (FTLEs) was implemented correctly. 
-
-As of writing, the author plans to investigate whether the FTLEs can be used to make better adversarial attacks.  
+The LEs of the Fast Gradient Sign Method attacks are analyzed on the replicated Storm network for the MNIST hand written number dataset. 
 
 ## Installation
 I assumed that the Python virtual environment (used to keep Python packages versions needed for the code to run from conflicting with what you have already installed) was created using the conda package. For installation instructions of conda, see https://docs.conda.io/projects/conda/en/stable/user-guide/install/index.html. 
