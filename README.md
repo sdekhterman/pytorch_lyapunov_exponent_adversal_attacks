@@ -1,4 +1,4 @@
-# Adversarial Attacks Lyapunov Exponents
+# Fast Gradient Sign Method Attack Lyapunov Exponents Analysis
  This repository replicates some of the results from, ["Finite-Time Lyapunov Exponents of Deep Neural Networks" from Physical Review Letters 132, 057301 by L. Storm, H. Linander,  J. Bec, K. Gustavsson, and B. Mehlig (2024)](https://doi.org/10.1103/PhysRevLett.132.057301).
 
 The LEs of the Fast Gradient Sign Method attacks are analyzed on the replicated Storm network for the MNIST hand written number dataset. 
